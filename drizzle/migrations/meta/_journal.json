@@ -8,6 +8,13 @@
       "when": 1794387907722,
       "tag": "0000_migration",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794783995401,
+      "tag": "0001_add_sportsday_v2_model",
+      "breakpoints": true
     }
   ]
 }

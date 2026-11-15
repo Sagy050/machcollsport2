@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Results and awards · Machabeng Sports Day 2026</title>
+<link rel="icon" href="/img/crest.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0d1b2e;--mute:#5a6b85;--line:#d8e0ec;--brand:#0a1f3d}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 Figtree,system-ui,sans-serif;color:var(--ink);background:#eef2f8}
+h1,h2,h3{font-family:"Big Shoulders Display",Impact,sans-serif;font-weight:900;line-height:1;margin:0}
+.page{max-width:900px;margin:0 auto;padding:20px 20px 60px;background:#fff;min-height:100vh}
+.bar{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:12px}
+.btn{display:inline-flex;align-items:center;min-height:42px;padding:6px 16px;border-radius:10px;border:1.5px solid #b9c5d8;background:#fff;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;color:var(--ink)}
+.btn.p{background:#17a05a;border-color:#17a05a;color:#fff}
+header.rep{display:flex;gap:16px;align-items:center;border-bottom:4px solid var(--brand);padding-bottom:14px;margin-bottom:16px}
+header.rep img{width:80px;height:80px;border-radius:50%}header.rep h1{font-size:48px}header.rep p{margin:4px 0 0;color:var(--mute)}
+.stamp{display:inline-block;padding:3px 12px;border-radius:999px;font-weight:700;font-size:13px;background:#fff0d6;color:#7a4b00}.stamp.final{background:#d7f0e1;color:#0c6b37}
+.win{border:2px solid #e8b820;background:#fff8e0;border-radius:14px;padding:14px 18px;margin:14px 0;display:flex;gap:14px;align-items:center}.win b{font:900 36px/1 "Big Shoulders Display",sans-serif}
+h2{font-size:34px;margin:28px 0 10px;border-bottom:2px solid var(--line);padding-bottom:6px}h3{font-size:22px;margin:0 0 6px}
+table{width:100%;border-collapse:collapse;margin-bottom:6px}th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left}th{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}th.n{text-align:right}td.n{text-align:right}td.p{font:900 22px/1 "Big Shoulders Display",sans-serif;width:48px}
+.dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px}
+.ev{break-inside:avoid;margin-bottom:16px}.ev small{color:var(--mute);font-weight:400;font-size:14px}
+.big td{font-size:18px}.empty{color:var(--mute)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}@media(max-width:700px){.cols{grid-template-columns:1fr}header.rep h1{font-size:34px}}
+footer{margin-top:30px;color:var(--mute);font-size:13px;border-top:1px solid var(--line);padding-top:10px}
+@media print{body{background:#fff}.bar{display:none}.page{padding:0;max-width:none}h2{break-after:avoid}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="bar"><a class="btn" href="/">← Live site</a><a class="btn" href="/api/results.csv">Download CSV</a><button class="btn p" id="print" type="button">Print / save as PDF</button></div>
+  <div id="doc"><p class="empty">Loading results…</p></div>
+</div>
+<script src="/js/report.js"></script>
+</body>
+</html>

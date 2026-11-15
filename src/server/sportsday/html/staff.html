@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Staff · Machabeng Sports Day</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0a1f3d">
+<link rel="icon" href="/img/crest.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/staff.css">
+</head>
+<body>
+<main id="login" hidden>
+  <form id="loginf" class="logincard" autocomplete="on">
+    <img src="/img/crest.png" alt="" width="72" height="72">
+    <h1>Staff sign-in</h1>
+    <p class="mute">Recorders and admins only. Spectators watch on the <a href="/">public page</a>.</p>
+    <label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <p class="err" id="loginerr" role="alert"></p>
+    <button class="btn primary big" type="submit">Sign in</button>
+  </form>
+</main>
+
+<div id="app" hidden>
+  <header class="top">
+    <a class="brand" href="#/"><img src="/img/crest.png" alt="" width="34" height="34"><div><b>Sports Day</b><small id="whoami"></small></div></a>
+    <div class="hchips" id="hchips" aria-label="House totals" aria-live="polite"></div>
+    <div class="right"><span class="conn" id="conn"><i></i><span>Connecting</span></span><button class="btn ghost sm" id="menu" aria-haspopup="dialog">Menu</button></div>
+  </header>
+  <div class="offline" id="offline" hidden role="status"></div>
+  <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+  <main id="view"></main>
+</div>
+
+<dialog id="dlg"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="/js/staff.js"></script>
+</body>
+</html>
