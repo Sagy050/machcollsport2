@@ -21,7 +21,7 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 export type Actor = { id: number; uid: string; username: string; display_name: string; role: "admin" | "recorder" } | null;
-type Body = Record<string, Any>;
+type Body = Any;
 
 const db = () => supabaseAdmin as unknown as SupabaseClient;
 const now = () => Date.now();
@@ -205,6 +205,7 @@ async function insertEvents(list: EventFields[]): Promise<EventRow[]> {
 export async function createEvent(actor: Actor, b: Body) {
   const f = cleanEvent(b, null);
   const [ev] = await insertEvents([f]);
+  if (!ev) throw new Error("Event was not created");
   const added = b.autofill === false ? 0 : await fillEntries(ev, null, actor);
   await audit(actor, "event.create", { ...f, entries: added });
   return { ...(await getEvent(ev.id)), entries: added };
@@ -281,7 +282,7 @@ function cleanBib(v: unknown) {
   return b;
 }
 function bibFrom(letter: string, bibs: string[]) {
-  const nums = bibs.map((b) => /^[A-Z](\d+)$/i.exec(b)).filter(Boolean).map((m) => +(m as RegExpExecArray)[1]);
+  const nums = bibs.map((b) => /^[A-Z](\d+)$/i.exec(b)).filter(Boolean).map((m) => Number((m as RegExpExecArray)[1]));
   const n = (nums.length ? Math.max(...nums) : 0) + 1;
   return letter + String(n).padStart(2, "0");
 }
@@ -347,7 +348,7 @@ export async function deleteAthlete(actor: Actor, id: number) {
 
 const LV = (v: unknown) => {
   const s = String(v || "").trim().toLowerCase();
-  return !s ? null : ATHLETE_LEVELS.find((l) => l.toLowerCase() === s || (s.length === 1 && l[0].toLowerCase() === s)) || undefined;
+  return !s ? null : ATHLETE_LEVELS.find((l) => l.toLowerCase() === s || (s.length === 1 && l.charAt(0).toLowerCase() === s)) || undefined;
 };
 const GN = (v: unknown) => {
   const s = String(v || "").trim().toLowerCase();
@@ -372,7 +373,7 @@ export async function importAthletes(actor: Actor, rows: unknown) {
     const r = rows[i] || {};
     try {
       const hv = String(r.house || "").trim().toLowerCase();
-      const house = houses.find((h) => h.name.toLowerCase() === hv) || (hv.length === 1 ? houses.find((h) => h.name[0].toLowerCase() === hv) : null);
+      const house = houses.find((h) => h.name.toLowerCase() === hv) || (hv.length === 1 ? houses.find((h) => h.name.charAt(0).toLowerCase() === hv) : null);
       if (!house) throw bad(`unknown house "${r.house}"`);
       const level = LV(r.level);
       if (level === undefined) throw bad(`unknown age group "${r.level}"`);

@@ -75,8 +75,10 @@ function medalTally(rows: { points: number; position: number | null }[]): Tally 
 function champion<T extends Tally & { name: string }>(list: T[]): (T & { joint: boolean }) | null {
   if (!list.length) return null;
   const sorted = list.slice().sort((a, b) => cmpStats(a, b) || a.name.localeCompare(b.name));
-  if (sorted[0].points <= 0) return null;
-  return { ...sorted[0], joint: sorted.length > 1 && sameStats(sorted[0], sorted[1]) };
+  const first = sorted[0];
+  const second = sorted[1];
+  if (!first || first.points <= 0) return null;
+  return { ...first, joint: !!second && sameStats(first, second) };
 }
 
 /** Positions for every entry, worked out per event from the recorded times/distances (heats ranked together). */
@@ -118,7 +120,8 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
     })
     .sort((a, b) => cmpStats(a, b) || a.name.localeCompare(b.name));
   standings.forEach((s, i) => {
-    s.rank = i > 0 && sameStats(s, standings[i - 1]) ? standings[i - 1].rank : i + 1;
+    const prev = i > 0 ? standings[i - 1] : undefined;
+    s.rank = prev && sameStats(s, prev) ? prev.rank : i + 1;
   });
 
   // Events with their entries.
@@ -235,7 +238,10 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
   }
   const topAthletes = top
     .slice(0, 10)
-    .map((a, i) => ({ ...a, rank: (i > 0 && sameStats(a, top[i - 1]) ? null : i + 1) as number | null }));
+    .map((a, i) => {
+      const prev = i > 0 ? top[i - 1] : undefined;
+      return { ...a, rank: (prev && sameStats(a, prev) ? null : i + 1) as number | null };
+    });
   // Give tied top athletes the shared rank number.
   let lastRank = 0;
   topAthletes.forEach((a) => {
@@ -279,10 +285,8 @@ export function resultsCsv(state: AppState): string {
   const house = new Map(state.houses.map((h) => [h.id, h.name]));
   const rows = [csvRow(["Event", "Level", "Status", "Position", "Bib", "Name", "House", "Performance", "Entry status", "Points"])];
   for (const ev of state.events) {
-    for (const e of ev.entries as Record<string, unknown>[]) {
-      rows.push(
-        csvRow([ev.name, ev.level, ev.status, e.position ?? "", e.bib, e.name, house.get(e.house_id as number), e.performance, e.status, e.points]),
-      );
+    for (const e of ev.entries as { position: number | null; bib: string; name: string; house_id: number; performance: string; status: string; points: number }[]) {
+      rows.push(csvRow([ev.name, ev.level, ev.status, e.position ?? "", e.bib, e.name, house.get(e.house_id), e.performance, e.status, e.points]));
     }
   }
   return rows.join("\r\n") + "\r\n";

@@ -88,7 +88,7 @@ async function passwordOk(email: string, password: string): Promise<boolean> {
 // ---- sessions ------------------------------------------------------------------------------------
 export function readCookie(request: Request): string | null {
   const m = /(?:^|;\s*)sd_session=([A-Za-z0-9_-]{20,80})/.exec(request.headers.get("cookie") || "");
-  return m ? m[1] : null;
+  return m?.[1] ?? null;
 }
 export function cookieHeader(token: string, maxAge: number) {
   // SameSite=None + Partitioned keeps sign-in working when the app is shown inside another site's frame (the editor preview).
@@ -215,7 +215,9 @@ export async function createUser(actor: Actor, b: Any) {
   await q(db().from("profiles").upsert({ id: uid, username: f.username, display_name: f.display_name, email, active: true }));
   await setRole(uid, f.role);
   await audit(actor, "user.create", { username: f.username, role: f.role });
-  const { p, role } = await byStaffNo((await q<ProfileRow[]>(db().from("profiles").select("*").eq("id", uid)))[0].staff_no);
+  const created = (await q<ProfileRow[]>(db().from("profiles").select("*").eq("id", uid)))[0];
+  if (!created) throw new Error("Account was not saved");
+  const { p, role } = await byStaffNo(created.staff_no);
   return publicUser(p, role);
 }
 

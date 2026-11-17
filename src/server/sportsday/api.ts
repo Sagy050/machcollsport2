@@ -39,7 +39,7 @@ const id = (p: Record<string, unknown>, name = "id") => {
   if (!Number.isInteger(n) || n < 1) throw new HttpError(404, "Not found");
   return n;
 };
-const clientIp = (r: Request) => r.headers.get("cf-connecting-ip") || (r.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "?";
+const clientIp = (r: Request) => r.headers.get("cf-connecting-ip") || (r.headers.get("x-forwarded-for") || "").split(",")[0]?.trim() || "?";
 
 route("GET", "/api/state", "public", ({ request }) => sendSnapshot(request, "public"));
 route("GET", "/api/results.csv", "public", async () => csv(await store.csvOf("public"), "sports-day-results.csv"));

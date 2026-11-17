@@ -28,7 +28,7 @@ export function pointsFor(position: number | null | undefined, status: string | 
   if (status && status !== "ok") return 0;
   if (!Number.isInteger(position) || (position as number) < 1) return 0;
   const p = position as number;
-  return p <= scheme.points.length ? scheme.points[p - 1] : scheme.rest;
+  return p <= scheme.points.length ? (scheme.points[p - 1] ?? 0) : scheme.rest;
 }
 
 /**
@@ -78,7 +78,8 @@ export function formatName(name: string, mode: string): string {
   if (mode !== "initial") return name;
   const parts = String(name).trim().split(/\s+/);
   if (parts.length < 2) return parts[0] || "";
-  return `${parts.slice(0, -1).join(" ")} ${parts[parts.length - 1][0].toUpperCase()}.`;
+  const last = parts[parts.length - 1] ?? "";
+  return `${parts.slice(0, -1).join(" ")} ${(last[0] ?? "").toUpperCase()}.`;
 }
 
 /** Seconds -> "12.34" or "1:02.50". Truncates to hundredths, like a stopwatch does. */

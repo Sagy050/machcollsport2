@@ -1,77 +1,40 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  Outlet,
-  Link,
-  createRootRouteWithContext,
-  useRouter,
-  HeadContent,
-  Scripts,
-  type ErrorComponentProps,
-} from "@tanstack/react-router";
+import { QueryClient } from "@tanstack/react-query";
+import { Outlet, createRootRouteWithContext, HeadContent, Scripts, type ErrorComponentProps } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
-import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { Toaster } from "@/components/ui/sonner";
-import { AuthProvider } from "@/hooks/use-auth";
-import { useRealtimeSync } from "@/hooks/use-realtime";
-import { SiteHeader } from "@/components/sports/site-header";
+
+// The real pages (/, /staff, /report) are the original hand-written HTML served by their routes.
+// This shell only renders the "not found" and error screens, in the same style as those pages.
+const shell =
+  "min-h-screen flex items-center justify-center px-4 text-center font-[Figtree,system-ui,sans-serif]";
 
 function NotFoundComponent() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-gradient text-8xl font-extrabold">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The page you're looking for doesn't exist or has been moved.
+    <div className={shell} style={{ background: "#0a1f3d", color: "#fff" }}>
+      <div>
+        <img src="/img/crest.png" alt="" width={72} height={72} style={{ margin: "0 auto 16px" }} />
+        <h1 style={{ fontFamily: '"Big Shoulders Display", Impact, sans-serif', fontSize: 56, fontWeight: 900, margin: 0 }}>Page not found</h1>
+        <p style={{ opacity: 0.8 }}>That page does not exist.</p>
+        <p>
+          <a href="/" style={{ color: "#ffc233" }}>Live results</a> · <a href="/staff" style={{ color: "#ffc233" }}>Staff sign-in</a>
         </p>
-        <div className="mt-6">
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Go home
-          </Link>
-        </div>
       </div>
     </div>
   );
 }
 
-function ErrorComponent({ error, reset }: ErrorComponentProps) {
-  console.error(error);
-  const router = useRouter();
+function ErrorComponent({ error }: ErrorComponentProps) {
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          This page didn't load
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. You can try refreshing or head back home.
+    <div className={shell} style={{ background: "#0a1f3d", color: "#fff" }}>
+      <div>
+        <h1 style={{ fontSize: 28 }}>This page didn't load</h1>
+        <p>
+          <a href="/" style={{ color: "#ffc233" }}>Back to live results</a>
         </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
-          <button
-            onClick={() => {
-              router.invalidate();
-              reset();
-            }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Try again
-          </button>
-          <a
-            href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            Go home
-          </a>
-        </div>
       </div>
     </div>
   );
@@ -79,35 +42,20 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
-    // Never add og:image or twitter:image here: every page without its own would inherit it.
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Machabeng Sports Day 2026 — Live Results" },
-      { name: "description", content: "Live results, house standings and awards for the Machabeng College Inter-House Sports Day." },
-      { name: "author", content: "Machabeng College" },
-      { name: "theme-color", content: "#12151f" },
-      { property: "og:title", content: "Machabeng Sports Day 2026 — Live Results" },
-      { property: "og:description", content: "Live results, house standings and awards for the Machabeng College Inter-House Sports Day." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
+      { title: "Machabeng College Inter-House Sports Day 2026" },
+      { name: "description", content: "Live scores, standings and results for the Machabeng College Inter-House Sports Day." },
+      { name: "theme-color", content: "#0a1f3d" },
     ],
     links: [
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..700&display=swap",
-      },
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/img/crest.png", type: "image/png" },
+      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Figtree:wght@400;500;700&display=swap" },
     ],
   }),
   shellComponent: RootShell,
-  component: RootComponent,
+  component: () => <Outlet />,
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
 });
@@ -118,42 +66,10 @@ function RootShell({ children }: { children: ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body style={{ margin: 0 }}>
         {children}
         <Scripts />
       </body>
     </html>
-  );
-}
-
-function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
-
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AppFrame />
-      </AuthProvider>
-    </QueryClientProvider>
-  );
-}
-
-function AppFrame() {
-  const live = useRealtimeSync();
-  return (
-    <div className="flex min-h-screen flex-col">
-      <SiteHeader live={live} />
-      <main className="flex-1">
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-      </main>
-      <footer className="no-print mt-12 border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-6 text-xs text-muted-foreground">
-          <span>Machabeng College · Inter-House Sports Day</span>
-          <span className="tabular">20 November 2026</span>
-        </div>
-      </footer>
-      <Toaster richColors position="top-center" />
-    </div>
   );
 }
