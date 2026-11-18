@@ -5,38 +5,83 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Staff · Machabeng Sports Day</title>
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#0a1f3d">
+<meta name="theme-color" content="#f8fafc">
 <link rel="icon" href="/img/crest.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/staff.css">
 </head>
 <body>
 <main id="login" hidden>
+  <div class="login-story" aria-hidden="true">
+    <div class="story-top"><img src="/img/crest.png" alt="" width="42" height="42"><span>INTER-HOUSE<br>ATHLETICS</span><span class="story-season">MASERU · 2026</span></div>
+    <div class="story-copy"><p class="eyebrow"><span></span> THE MEET STARTS HERE</p><h1>Every house.<br>Every athlete.<br><em>One finish line.</em></h1><p>Set the programme, prepare your officials and bring Sports Day to life.</p></div>
+    <div class="track-art"><i></i><i></i><i></i><i></i><span>01 — 04</span></div>
+    <div class="story-foot"><span>SPORTS DAY CONTROL ROOM</span><span>01 / 04</span></div>
+  </div>
   <form id="loginf" class="logincard" autocomplete="on">
-    <img src="/img/crest.png" alt="" width="72" height="72">
-    <h1>Staff sign-in</h1>
-    <p class="mute">Recorders and admins only. Spectators watch on the <a href="/">public page</a>.</p>
-    <label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
-    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <div class="login-heading"><p class="eyebrow"><span></span> OFFICIALS & ADMIN</p><h2>Welcome back.</h2><p class="mute">Sign in to prepare or run the meet.</p></div>
+    <label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="Your staff username"></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required placeholder="Your password"></label>
     <p class="err" id="loginerr" role="alert"></p>
-    <button class="btn primary big" type="submit">Sign in</button>
+    <button class="btn primary big" type="submit">Enter the control room <span aria-hidden="true">→</span></button>
+    <p class="login-help">Spectators can follow the action on the <a href="/">public scoreboard</a>.</p>
+    <button class="btn ghost" id="bootstrap-open" type="button" hidden>First deployment? Set up the admin account</button>
+    <p class="login-help" id="bootstrap-not-configured" hidden>Admin setup is not enabled. Ask the site owner to configure the private first-run setup key.</p>
+    <section class="bootstrap-panel" id="bootstrap-panel" hidden aria-labelledby="bootstrap-title">
+      <h3 id="bootstrap-title">Create the first administrator</h3>
+      <p class="mute">Use the private setup code supplied by the site owner. This option closes after an active admin account is created.</p>
+      <label>Setup code<input id="setup-key" type="password" autocomplete="off" minlength="32" maxlength="256" required></label>
+      <label>Administrator name<input id="setup-name" autocomplete="name" maxlength="60" required></label>
+      <label>Username<input id="setup-username" autocomplete="username" minlength="3" maxlength="32" autocapitalize="none" spellcheck="false" required></label>
+      <label>Password<input id="setup-password" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
+      <p class="err" id="bootstrap-error" role="alert"></p>
+      <button class="btn primary" id="bootstrap-create" type="button">Create admin and sign in</button>
+    </section>
   </form>
 </main>
 
 <div id="app" hidden>
   <header class="top">
-    <a class="brand" href="#/"><img src="/img/crest.png" alt="" width="34" height="34"><div><b>Sports Day</b><small id="whoami"></small></div></a>
-    <div class="hchips" id="hchips" aria-label="House totals" aria-live="polite"></div>
-    <div class="right"><span class="conn" id="conn"><i></i><span>Connecting</span></span><button class="btn ghost sm" id="menu" aria-haspopup="dialog">Menu</button></div>
+    <div class="top-inner">
+      <a class="brand" href="#/">
+        <img src="/img/crest.png" alt="" width="36" height="36">
+        <span class="brand-copy"><b>Machabeng Sports Day <strong>2026</strong></b><small>INTER-HOUSE ATHLETICS · MASERU</small></span>
+        <span class="meet-live" id="conn" role="status" aria-live="polite"><i></i><span>CONNECTING</span></span>
+      </a>
+      <div class="header-actions">
+        <div class="hchips" id="hchips" aria-label="House totals" aria-live="polite"></div>
+        <div class="header-tools">
+          <a class="public-link" href="/" target="_blank" rel="noopener" aria-label="Open public live scoreboard in a new tab" title="Open public live scoreboard">
+            <svg class="public-link-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <span class="public-link-label">Public View</span>
+            <span class="public-link-live"><i aria-hidden="true"></i> LIVE</span>
+          </a>
+          <details class="profile-menu" id="profile-menu">
+            <summary aria-label="Open profile menu"><span class="profile-avatar-wrap"><span class="profile-avatar" id="profile-avatar"></span><i class="profile-status" aria-hidden="true"></i></span><span class="profile-label"><b id="whoami"></b><small id="profile-role"></small></span><svg class="profile-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"></path></svg></summary>
+            <div class="profile-dropdown">
+              <a href="/report" target="_blank" rel="noopener">Full meet report <span aria-hidden="true">↗</span></a>
+              <button type="button" data-profile="password">Change password</button>
+              <button type="button" data-profile="logout">Sign out</button>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
   </header>
+  <div class="quick-nav" id="quick-nav">
+    <button class="quick-nav-trigger" id="quick-nav-trigger" type="button" aria-label="Open navigation menu" aria-expanded="false" aria-controls="dock-links" title="Open navigation menu">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="14" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect></svg>
+    </button>
+    <nav class="quick-nav-menu" id="dock-links" aria-label="Sections" hidden></nav>
+  </div>
   <div class="offline" id="offline" hidden role="status"></div>
-  <nav class="tabs" id="tabs" aria-label="Sections"></nav>
   <main id="view"></main>
 </div>
 
 <dialog id="dlg"></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
+<script src="/js/house-colors.js"></script>
 <script src="/js/staff.js"></script>
 </body>
 </html>

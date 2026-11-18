@@ -35,6 +35,7 @@ export type EventRow = {
   sched_time: string;
   status: string;
   heat_starts: Record<string, number>;
+  heat_ends?: Record<string, number>;
   sort: number;
   created_at: number;
   updated_at: number;
@@ -53,7 +54,24 @@ export type EntryRow = {
   updated_at: number;
   by_name?: string | null;
 };
-export type RawData = { settings: Settings; houses: HouseRow[]; events: EventRow[]; entries: EntryRow[]; athletes: AthleteRow[] };
+export type RelayMemberRow = {
+  entry_id: number;
+  leg: number;
+  athlete_id: number;
+  bib: string;
+  full_name: string;
+  house_id: number;
+};
+export type RelaySplitRow = { entry_id: number; leg: number; cumulative_ms: number };
+export type RawData = {
+  settings: Settings;
+  houses: HouseRow[];
+  events: EventRow[];
+  entries: EntryRow[];
+  athletes: AthleteRow[];
+  relayMembers?: RelayMemberRow[];
+  relaySplits?: RelaySplitRow[];
+};
 
 const LEVELS = ["Junior", "Intermediate", "Senior"];
 type Tally = { points: number; gold: number; silver: number; bronze: number; events: number };
@@ -103,6 +121,18 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const eventById = new Map(events.map((e) => [e.id, e]));
   const positions = positionsFor(events, entries);
+  const relayMembersByEntry = new Map<number, RelayMemberRow[]>();
+  for (const member of raw.relayMembers || []) {
+    if (!relayMembersByEntry.has(member.entry_id)) relayMembersByEntry.set(member.entry_id, []);
+    relayMembersByEntry.get(member.entry_id)!.push(member);
+  }
+  const relaySplitsByEntry = new Map<number, { leg: number; cumulativeMs: number; splitMs: number }[]>();
+  for (const split of raw.relaySplits || []) {
+    const list = relaySplitsByEntry.get(split.entry_id) || [];
+    const previous = list.length ? list[list.length - 1]!.cumulativeMs : 0;
+    list.push({ leg: split.leg, cumulativeMs: split.cumulative_ms, splitMs: split.cumulative_ms - previous });
+    relaySplitsByEntry.set(split.entry_id, list);
+  }
 
   // Score every entry once.
   const scored = entries.map((e) => {
@@ -143,6 +173,18 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
       position: e.position,
       status: e.status,
       points: e.points,
+      relayMembers: (relayMembersByEntry.get(e.id) || [])
+        .slice()
+        .sort((a, b) => a.leg - b.leg)
+        .map((m) => ({
+          leg: m.leg,
+          athlete_id: m.athlete_id,
+          bib: m.bib,
+          name: m.full_name,
+          full_name: m.full_name,
+          house_id: m.house_id,
+        })),
+      relaySplits: relaySplitsByEntry.get(e.id) || [],
     };
     if (staff) Object.assign(out, { by: e.by_name || null, at: e.updated_at, level: a ? a.level : null, gender: a ? a.gender : null });
     return out;
@@ -172,7 +214,13 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
         entries: list.map(shape),
         count: list.length,
         finished,
-        ...(staff ? { heatStarts: ev.heat_starts || {}, heats: Math.max(1, ...list.map((x) => x.heat)) } : {}),
+        ...(staff
+          ? {
+              heatStarts: ev.heat_starts || {},
+              heatEnds: ev.heat_ends || {},
+              heats: Math.max(1, ...list.map((x) => x.heat)),
+            }
+          : {}),
       };
     });
 

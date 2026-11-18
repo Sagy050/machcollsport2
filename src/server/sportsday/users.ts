@@ -159,6 +159,93 @@ export async function changeOwnPassword(user: SessionUser, body: Any) {
   await setPassword(user, user.id, checkPassword(body.password, "New password"));
 }
 
+function bootstrapSecret() {
+  const secret = process.env["SPORTSDAY_SETUP_KEY"] || "";
+  return secret.length >= 32 ? secret : null;
+}
+
+async function constantTimeEqual(a: string, b: string) {
+  const [left, right] = await Promise.all([sha256(a), sha256(b)]);
+  let diff = 0;
+  for (let i = 0; i < left.length; i++) diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  return diff === 0;
+}
+
+export async function bootstrapStatus() {
+  const required = (await activeAdmins()) === 0;
+  return { required, configured: bootstrapSecret() !== null, open: required && bootstrapSecret() !== null };
+}
+
+async function claimInitialAdmin() {
+  const claimToken = randomToken();
+  const table = () => db().from("sportsday_admin_bootstrap");
+  const first = await table().insert({ id: 1, claim_token: claimToken, claimed_at: now() });
+  if (!first.error) return claimToken;
+  if (first.error.code !== "23505") throw dbError(first.error);
+
+  const current = await q<{ claim_token: string; claimed_at: number } | null>(
+    table().select("claim_token,claimed_at").eq("id", 1).maybeSingle(),
+  );
+  if (!current || now() - current.claimed_at < 15 * 60e3) {
+    throw new HttpError(409, "First-admin setup is already in progress or has already completed");
+  }
+  const removed = await table().delete().eq("id", 1).eq("claim_token", current.claim_token).select("id");
+  if (removed.error) throw dbError(removed.error);
+  if (!removed.data?.length) throw new HttpError(409, "First-admin setup is already in progress");
+  const next = await table().insert({ id: 1, claim_token: claimToken, claimed_at: now() });
+  if (next.error) {
+    if (next.error.code === "23505") throw new HttpError(409, "First-admin setup is already in progress");
+    throw dbError(next.error);
+  }
+  return claimToken;
+}
+
+export async function bootstrapAdmin(body: Any, ip: string) {
+  const secret = bootstrapSecret();
+  if (!secret) throw new HttpError(503, "First-admin setup is not configured. Set SPORTSDAY_SETUP_KEY to a secret of at least 32 characters.");
+  const since = now() - 15 * 60e3;
+  const ipLike = `%"ip":"${likeEscape(ip)}"%`;
+  const { count, error } = await db()
+    .from("audit")
+    .select("id", { count: "exact", head: true })
+    .eq("action", "bootstrap.fail")
+    .gt("ts", since)
+    .like("detail", ipLike);
+  if (error) throw dbError(error);
+  if ((count || 0) >= 10) throw new HttpError(429, "Too many setup attempts. Wait a few minutes and try again.");
+
+  const provided = str(body.setup_key, { field: "Setup code", required: true, max: 256 });
+  if (!(await constantTimeEqual(provided, secret))) {
+    const saved = await db().from("audit").insert({
+      ts: now(),
+      user_id: null,
+      username: "bootstrap",
+      action: "bootstrap.fail",
+      detail: JSON.stringify({ ip }),
+    });
+    if (saved.error) throw dbError(saved.error);
+    throw new HttpError(403, "The setup code is incorrect");
+  }
+  if ((await activeAdmins()) > 0) throw new HttpError(409, "An active admin account already exists");
+
+  const claimToken = await claimInitialAdmin();
+  try {
+    if ((await activeAdmins()) > 0) throw new HttpError(409, "An active admin account already exists");
+    const user = {
+      username: body.username,
+      display_name: body.display_name,
+      password: checkPassword(body.password),
+      role: "admin",
+    };
+    await createUser(null, user);
+    return await login(user, ip);
+  } catch (error) {
+    const released = await db().from("sportsday_admin_bootstrap").delete().eq("id", 1).eq("claim_token", claimToken);
+    if (released.error) console.error("Could not release first-admin setup claim", released.error);
+    throw error;
+  }
+}
+
 // ---- user admin ----------------------------------------------------------------------------------
 const publicUser = (p: ProfileRow, role: Role) => ({
   id: p.staff_no,
@@ -212,9 +299,15 @@ export async function createUser(actor: Actor, b: Any) {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({ email, password: pw, email_confirm: true, user_metadata: { display_name: f.display_name } });
   if (error || !data.user) throw new HttpError(400, /password/i.test(error?.message || "") ? `Password not accepted: ${error!.message}` : "Could not create that account");
   const uid = data.user.id;
-  await q(db().from("profiles").upsert({ id: uid, username: f.username, display_name: f.display_name, email, active: true }));
-  await setRole(uid, f.role);
-  await audit(actor, "user.create", { username: f.username, role: f.role });
+  try {
+    await q(db().from("profiles").upsert({ id: uid, username: f.username, display_name: f.display_name, email, active: true }));
+    await setRole(uid, f.role);
+    await audit(actor, "user.create", { username: f.username, role: f.role });
+  } catch (error) {
+    const cleanup = await supabaseAdmin.auth.admin.deleteUser(uid);
+    if (cleanup.error) console.error("Could not roll back staff account creation", cleanup.error);
+    throw error;
+  }
   const created = (await q<ProfileRow[]>(db().from("profiles").select("*").eq("id", uid)))[0];
   if (!created) throw new Error("Account was not saved");
   const { p, role } = await byStaffNo(created.staff_no);

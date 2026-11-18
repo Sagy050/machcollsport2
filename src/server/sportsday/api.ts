@@ -5,9 +5,10 @@
  *   Admin               athletes, events and entries, users, settings, finalise, reset, backup
  * Live updates come from Lovable Cloud realtime (see public/js/live.js), not from this server.
  */
-import { HttpError, bad, int } from "@/lib/sportsday/util";
+import { HttpError, bad, int, str } from "@/lib/sportsday/util";
 import * as store from "./store";
 import * as users from "./users";
+import { parseRosterFile, sampleWorkbook } from "./roster-file";
 import type { SessionUser } from "./users";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,6 +41,8 @@ const id = (p: Record<string, unknown>, name = "id") => {
   return n;
 };
 const clientIp = (r: Request) => r.headers.get("cf-connecting-ip") || (r.headers.get("x-forwarded-for") || "").split(",")[0]?.trim() || "?";
+const MAX_ROSTER_BYTES = 8 * 1024 * 1024;
+const MAX_ROSTER_BASE64 = Math.ceil(MAX_ROSTER_BYTES / 3) * 4;
 
 route("GET", "/api/state", "public", ({ request }) => sendSnapshot(request, "public"));
 route("GET", "/api/results.csv", "public", async () => csv(await store.csvOf("public"), "sports-day-results.csv"));
@@ -47,6 +50,11 @@ route("GET", "/api/time", "public", () => json({ now: Date.now() }));
 route("GET", "/api/me", "public", ({ user }) =>
   json({ user: user ? { id: user.id, username: user.username, display_name: user.display_name, role: user.role } : null }),
 );
+route("GET", "/api/bootstrap/status", "public", async () => json(await users.bootstrapStatus()));
+route("POST", "/api/bootstrap", "public", async ({ request, body }) => {
+  const result = await users.bootstrapAdmin(body, clientIp(request));
+  return json({ user: result.user }, 200, { "Set-Cookie": users.cookieHeader(result.token, Math.floor(users.SESSION_MS / 1000)) });
+});
 
 route("POST", "/api/login", "public", async ({ request, body }) => {
   const r = await users.login(body, clientIp(request));
@@ -74,7 +82,16 @@ route("POST", "/api/events/:id/complete", "staff", async ({ user, params, body }
 route("POST", "/api/events/:id/reopen", "staff", async ({ user, params }) => json({ event: await store.reopenEvent(user, id(params)) }));
 route("POST", "/api/events/:id/swap", "staff", async ({ user, body }) => json(await store.swapResults(user, id(body, "a"), id(body, "b"))));
 route("POST", "/api/events/:id/entries", "staff", async ({ user, params, body }) => json(await store.addEntries(user, id(params), body), 201));
+route("POST", "/api/events/:id/relay-lineup", "admin", async ({ user, params, body }) =>
+  json(await store.setRelayLineup(user, id(params), body.house_id, body.athlete_ids)),
+);
 route("POST", "/api/entries/:id/time", "staff", async ({ user, params, body }) => json({ entry: await store.recordTime(user, id(params), body.ms) }));
+route("POST", "/api/entries/:id/relay-split", "staff", async ({ user, params, body }) =>
+  json(await store.recordRelaySplit(user, id(params), body.leg, body.elapsedMs)),
+);
+route("POST", "/api/entries/:id/relay-split/undo", "staff", async ({ user, params }) =>
+  json(await store.undoRelaySplit(user, id(params))),
+);
 route("POST", "/api/entries/:id/mark", "staff", async ({ user, params, body }) => json({ entry: await store.recordMark(user, id(params), body.value) }));
 route("POST", "/api/entries/:id/clear", "staff", async ({ user, params }) => json({ entry: await store.clearResult(user, id(params)) }));
 route("POST", "/api/entries/:id/status", "staff", async ({ user, params, body }) =>
@@ -92,6 +109,31 @@ route("DELETE", "/api/entries/:id", "admin", async ({ user, params }) => json(aw
 
 route("POST", "/api/athletes", "admin", async ({ user, body }) => json({ athlete: await store.createAthlete(user, body) }, 201));
 route("POST", "/api/athletes/import", "admin", async ({ user, body }) => json(await store.importAthletes(user, body.rows)));
+route("POST", "/api/athletes/parse-file", "admin", async ({ body }) => {
+  const filename = str(body.filename, { field: "Filename", required: true, max: 200 });
+  if (typeof body.data !== "string" || body.data.length > MAX_ROSTER_BASE64 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.data)) {
+    throw bad("Roster file data is invalid or too large");
+  }
+  const binary = atob(body.data);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  if (!bytes.length || bytes.length > MAX_ROSTER_BYTES || btoa(binary) !== body.data) {
+    throw bad("Roster file data is invalid or too large");
+  }
+  return json({ rows: parseRosterFile(filename, bytes) });
+});
+route("GET", "/api/athletes/template.xlsx", "admin", () => {
+  const workbook = sampleWorkbook();
+  const body = new ArrayBuffer(workbook.byteLength);
+  new Uint8Array(body).set(workbook);
+  return new Response(body, {
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": 'attachment; filename="sportsday-roster-template.xlsx"',
+      ...NO_STORE,
+    },
+  });
+});
+route("POST", "/api/athletes/clear", "admin", async ({ user }) => json(await store.clearRoster(user)));
 route("PATCH", "/api/athletes/:id", "admin", async ({ user, params, body }) => json({ athlete: await store.updateAthlete(user, id(params), body) }));
 route("DELETE", "/api/athletes/:id", "admin", async ({ user, params }) => json(await store.deleteAthlete(user, id(params))));
 route("GET", "/api/athletes.csv", "admin", async () => csv(await store.athletesCsv(), "athletes.csv"));
@@ -125,7 +167,10 @@ route("GET", "/api/admin/backup", "admin", async ({ user }) => {
   });
 });
 
-const BIG = new Set(["/api/athletes/import"]); // bulk roster import may send up to 1 MB
+const BIG = new Map([
+  ["/api/athletes/import", 1024 * 1024],
+  ["/api/athletes/parse-file", MAX_ROSTER_BASE64 + 1024],
+]);
 
 async function readBody(request: Request, max: number) {
   const text = await request.text();
@@ -169,7 +214,7 @@ async function dispatch(request: Request): Promise<Response> {
     if (!user) throw new HttpError(401, "Please sign in");
     if (matched.access === "admin" && user.role !== "admin") throw new HttpError(403, "Admins only");
   }
-  const body = method === "GET" || method === "DELETE" ? {} : await readBody(request, BIG.has(url.pathname) ? 1024 * 1024 : 256 * 1024);
+  const body = method === "GET" || method === "DELETE" ? {} : await readBody(request, BIG.get(url.pathname) || 256 * 1024);
   return matched.fn({ request, url, params, body, user });
 }
 
