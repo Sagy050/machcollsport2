@@ -4,7 +4,7 @@ The Lovable-hosted Sports Day app: a public live scoreboard, staff event-operati
 
 ## First deployment
 
-1. Connect the Lovable project to Lovable Cloud/Supabase and make sure its existing migrations are applied. Apply [`0003_relay_and_admin_setup.sql`](./drizzle/migrations/0003_relay_and_admin_setup.sql) if it is not already in the database.
+1. Connect the Lovable project to Lovable Cloud/Supabase and make sure its existing migrations are applied. Apply [`0003_relay_and_admin_setup.sql`](./drizzle/migrations/0003_relay_and_admin_setup.sql) and [`0004_google_staff_login.sql`](./drizzle/migrations/0004_google_staff_login.sql) if they are not already in the database.
 2. In Lovable’s server-side secrets, set `SPORTSDAY_SETUP_KEY` to a private random value of at least 32 characters. For example, generate one locally with:
 
    ```sh
@@ -12,8 +12,9 @@ The Lovable-hosted Sports Day app: a public live scoreboard, staff event-operati
    ```
 
    Keep this value out of `VITE_` variables, source control, and shared screenshots.
-3. Open `/staff`, choose **First deployment? Set up the admin account**, enter the setup key, and choose the first administrator’s name, username, and password.
+3. In Supabase **Authentication → Providers → Google**, enable Google and enter the OAuth client ID and secret. Use the callback URL shown by Supabase in the Google OAuth client, and add the deployed staff URL (for example, `https://your-site.example/staff*`) to Supabase **Authentication → URL Configuration → Redirect URLs**. Open `/staff`, choose **First deployment? Set up the admin account**, enter the first administrator’s Google email and setup key, and choose their name, username, and password.
 4. After the first admin is created, remove `SPORTSDAY_SETUP_KEY` from the deployment secrets. Admin setup is also blocked while an active admin exists.
+5. Add a Google email to each existing staff account in the Team section. Google sign-in is limited to active staff accounts with an explicitly assigned, verified email.
 
 The migration seeds the default houses and meet settings. Start with the fresh Lovable database; do not copy the source SQLite file.
 
