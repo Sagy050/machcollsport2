@@ -204,16 +204,21 @@
   }
 
   /* ------------------------------------------------------------------ sign in / out */
+  function setBootstrapPanel(open) {
+    var panel = $('#bootstrap-panel');
+    panel.hidden = !open;
+    panel.querySelectorAll('input').forEach(function (input) { input.disabled = !open; });
+  }
   function checkBootstrapStatus() {
     api('GET', '/api/bootstrap/status').then(function (status) {
       var open = status.required && status.configured;
       $('#bootstrap-open').hidden = !open;
       $('#bootstrap-not-configured').hidden = !status.required || status.configured;
-      if (!open) $('#bootstrap-panel').hidden = true;
+      if (!open) setBootstrapPanel(false);
     }).catch(function () {
       $('#bootstrap-open').hidden = true;
       $('#bootstrap-not-configured').hidden = true;
-      $('#bootstrap-panel').hidden = true;
+      setBootstrapPanel(false);
     });
   }
   function showLogin() {
@@ -228,7 +233,7 @@
     api('POST', '/api/login', { username: f.username.value.trim(), password: f.password.value }).then(function (r) { ME = r.user; start(); }, function (er) { $('#loginerr').textContent = er.message; });
   });
   $('#bootstrap-open').addEventListener('click', function () {
-    $('#bootstrap-panel').hidden = !$('#bootstrap-panel').hidden;
+    setBootstrapPanel($('#bootstrap-panel').hidden);
     $('#bootstrap-error').textContent = '';
   });
   $('#bootstrap-create').addEventListener('click', function () {

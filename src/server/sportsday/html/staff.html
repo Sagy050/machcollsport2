@@ -31,10 +31,10 @@
     <section class="bootstrap-panel" id="bootstrap-panel" hidden aria-labelledby="bootstrap-title">
       <h3 id="bootstrap-title">Create the first administrator</h3>
       <p class="mute">Use the private setup code supplied by the site owner. This option closes after an active admin account is created.</p>
-      <label>Setup code<input id="setup-key" type="password" autocomplete="off" minlength="32" maxlength="256" required></label>
-      <label>Administrator name<input id="setup-name" autocomplete="name" maxlength="60" required></label>
-      <label>Username<input id="setup-username" autocomplete="username" minlength="3" maxlength="32" autocapitalize="none" spellcheck="false" required></label>
-      <label>Password<input id="setup-password" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>
+      <label>Setup code<input id="setup-key" type="password" autocomplete="off" minlength="32" maxlength="256" required disabled></label>
+      <label>Administrator name<input id="setup-name" autocomplete="name" maxlength="60" required disabled></label>
+      <label>Username<input id="setup-username" autocomplete="username" minlength="3" maxlength="32" autocapitalize="none" spellcheck="false" required disabled></label>
+      <label>Password<input id="setup-password" type="password" autocomplete="new-password" minlength="8" maxlength="200" required disabled></label>
       <p class="err" id="bootstrap-error" role="alert"></p>
       <button class="btn primary" id="bootstrap-create" type="button">Create admin and sign in</button>
     </section>
