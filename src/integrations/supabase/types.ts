@@ -14,6 +14,107 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          key: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          value: Json
+        }
+        Update: {
+          key?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      athletes: {
+        Row: {
+          bib: string
+          created_at: number
+          full_name: string
+          gender: string | null
+          house_id: number
+          id: number
+          level: string | null
+        }
+        Insert: {
+          bib: string
+          created_at: number
+          full_name: string
+          gender?: string | null
+          house_id: number
+          id?: number
+          level?: string | null
+        }
+        Update: {
+          bib?: string
+          created_at?: number
+          full_name?: string
+          gender?: string | null
+          house_id?: number
+          id?: number
+          level?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "athletes_house_id_fkey"
+            columns: ["house_id"]
+            isOneToOne: false
+            referencedRelation: "houses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit: {
+        Row: {
+          action: string
+          detail: string
+          id: number
+          ts: number
+          user_id: number | null
+          username: string | null
+        }
+        Insert: {
+          action: string
+          detail?: string
+          id?: number
+          ts: number
+          user_id?: number | null
+          username?: string | null
+        }
+        Update: {
+          action?: string
+          detail?: string
+          id?: number
+          ts?: number
+          user_id?: number | null
+          username?: string | null
+        }
+        Relationships: []
+      }
+      backups: {
+        Row: {
+          created_at: number
+          data: Json
+          id: number
+          label: string
+        }
+        Insert: {
+          created_at: number
+          data: Json
+          id?: number
+          label: string
+        }
+        Update: {
+          created_at?: number
+          data?: Json
+          id?: number
+          label?: string
+        }
+        Relationships: []
+      }
       events: {
         Row: {
           created_at: string
@@ -62,6 +163,42 @@ export type Database = {
         }
         Relationships: []
       }
+      houses: {
+        Row: {
+          color: string
+          id: number
+          name: string
+          sort: number
+        }
+        Insert: {
+          color: string
+          id?: number
+          name: string
+          sort?: number
+        }
+        Update: {
+          color?: string
+          id?: number
+          name?: string
+          sort?: number
+        }
+        Relationships: []
+      }
+      live_version: {
+        Row: {
+          id: number
+          v: number
+        }
+        Insert: {
+          id: number
+          v?: number
+        }
+        Update: {
+          id?: number
+          v?: number
+        }
+        Relationships: []
+      }
       points_scale: {
         Row: {
           points: number
@@ -79,22 +216,34 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active: boolean
           created_at: string
           display_name: string | null
           email: string | null
           id: string
+          last_login: number | null
+          staff_no: number
+          username: string | null
         }
         Insert: {
+          active?: boolean
           created_at?: string
           display_name?: string | null
           email?: string | null
           id: string
+          last_login?: number | null
+          staff_no?: number
+          username?: string | null
         }
         Update: {
+          active?: boolean
           created_at?: string
           display_name?: string | null
           email?: string | null
           id?: string
+          last_login?: number | null
+          staff_no?: number
+          username?: string | null
         }
         Relationships: []
       }
@@ -142,6 +291,144 @@ export type Database = {
           },
         ]
       }
+      sd_entries: {
+        Row: {
+          athlete_id: number | null
+          event_id: number
+          heat: number
+          house_id: number
+          id: number
+          name: string
+          perf_value: number | null
+          performance: string
+          status: string
+          updated_at: number
+          updated_by: number | null
+        }
+        Insert: {
+          athlete_id?: number | null
+          event_id: number
+          heat?: number
+          house_id: number
+          id?: number
+          name: string
+          perf_value?: number | null
+          performance?: string
+          status?: string
+          updated_at: number
+          updated_by?: number | null
+        }
+        Update: {
+          athlete_id?: number | null
+          event_id?: number
+          heat?: number
+          house_id?: number
+          id?: number
+          name?: string
+          perf_value?: number | null
+          performance?: string
+          status?: string
+          updated_at?: number
+          updated_by?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sd_entries_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sd_entries_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "sd_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sd_entries_house_id_fkey"
+            columns: ["house_id"]
+            isOneToOne: false
+            referencedRelation: "houses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sd_events: {
+        Row: {
+          created_at: number
+          gender: string | null
+          heat_starts: Json
+          id: number
+          kind: string
+          level: string
+          measure: string
+          name: string
+          sched_time: string
+          sort: number
+          status: string
+          updated_at: number
+        }
+        Insert: {
+          created_at: number
+          gender?: string | null
+          heat_starts?: Json
+          id?: number
+          kind?: string
+          level: string
+          measure?: string
+          name: string
+          sched_time?: string
+          sort?: number
+          status?: string
+          updated_at: number
+        }
+        Update: {
+          created_at?: number
+          gender?: string | null
+          heat_starts?: Json
+          id?: number
+          kind?: string
+          level?: string
+          measure?: string
+          name?: string
+          sched_time?: string
+          sort?: number
+          status?: string
+          updated_at?: number
+        }
+        Relationships: []
+      }
+      staff_sessions: {
+        Row: {
+          created_at: number
+          expires_at: number
+          profile_id: string
+          token_hash: string
+        }
+        Insert: {
+          created_at: number
+          expires_at: number
+          profile_id: string
+          token_hash: string
+        }
+        Update: {
+          created_at?: number
+          expires_at?: number
+          profile_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_sessions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -175,6 +462,18 @@ export type Database = {
         Returns: boolean
       }
       reset_all_results: { Args: never; Returns: undefined }
+      sd_clear_heat_clock: {
+        Args: { _event: number; _heat: number; _now: number }
+        Returns: undefined
+      }
+      sd_start_heat: {
+        Args: { _at: number; _event: number; _heat: number; _now: number }
+        Returns: Json
+      }
+      sd_swap_results: {
+        Args: { _a: number; _actor: number; _b: number; _now: number }
+        Returns: undefined
+      }
       set_user_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

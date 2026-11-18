@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Machabeng College Inter-House Sports Day 2026</title>
+<meta name="description" content="Live scores, standings and results for the Machabeng College Inter-House Sports Day.">
+<meta name="theme-color" content="#0a1f3d">
+<meta property="og:title" content="Machabeng College Inter-House Sports Day 2026">
+<meta property="og:description" content="Live scores, standings and results for the Machabeng College Inter-House Sports Day.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/img/crest.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/site.css">
+</head>
+<body class="land">
+<canvas id="stage" aria-label="Interactive 3D stadium with runners and a cheering crowd"></canvas>
+<nav>
+  <a class="brand" href="#welcome"><b><img class="logo" src="/img/crest.png" alt="">Machabeng Sports Day<small>Inter-House 2026</small></b></a>
+  <div class="links">
+    <span class="conn off" id="conn" role="status" aria-live="polite"><i></i><span>Connecting…</span></span>
+    <a class="onh" href="#live">Live scores</a><a class="onh" href="#events">Events</a><a class="onh" href="#athletes">Athletes</a><a class="onh" href="#points">Points</a><a class="onh" href="#about">The school</a>
+    <a class="btn onh" href="#signin">Officials</a><a class="btn onl" href="#home">Enter</a>
+  </div>
+</nav>
+<div class="stale" id="stale" hidden>Connection lost. Showing the last results we received. Retrying…</div>
+
+<div id="landv">
+  <header class="hero" id="top">
+    <div class="copy">
+      <div class="pill"><i></i><span id="lpill">20 November 2026 · Maseru, Lesotho</span></div>
+      <h1><span>Inter-House</span><span>Sports Day</span></h1>
+      <div class="hs" id="lhs"></div>
+      <p>Live scores and results for Machabeng College.</p>
+      <div class="count landing-count" id="landing-count" aria-label="Countdown to Sports Day" hidden>
+        <div id="ld">0<small>days</small></div>
+        <div id="lh">0<small>hours</small></div>
+        <div id="lm">0<small>minutes</small></div>
+        <div id="ls">0<small>seconds</small></div>
+      </div>
+      <div class="cta"><a class="btn" href="#home">View live results</a><a class="btn ghost" href="#signin">Officials</a></div>
+    </div>
+  </header>
+</div>
+
+<div id="homev" hidden>
+  <header class="hero" id="hometop">
+    <div class="copy">
+      <div class="pill"><i></i><span id="phase">Live now</span></div>
+      <h1 id="h1">Live results</h1>
+      <p id="sub">Standings update as recorders enter results from the field.</p>
+      <div class="count" id="count"><div id="d">0<small>days</small></div><div id="h">0<small>hours</small></div><div id="m">0<small>minutes</small></div><div id="s">0<small>seconds</small></div></div>
+    </div>
+    <div class="hud" id="hud" aria-live="polite"></div>
+  </header>
+
+  <section id="live">
+    <div class="live"><i></i><span id="livelbl">Live</span></div>
+    <h2 id="livetitle">Who’s winning right now?</h2>
+    <div id="champ"></div>
+    <div class="prog"><div class="bar2"><i id="pg"></i></div><span id="pgt"></span></div>
+    <p class="lead">Every result adds points to a house and the ranking re-sorts on its own. This page is read-only: it only shows what the officials record.</p>
+    <div class="board">
+      <div class="panel" id="standings" aria-live="polite"></div>
+      <div class="panel"><h3 style="font-size:30px;margin-bottom:6px">Latest results</h3><ul class="feed" id="feed"></ul></div>
+    </div>
+  </section>
+
+  <section id="events">
+    <h2>Today’s events</h2>
+    <p class="lead">Tap an event to see the full result. Several events can run at the same time.</p>
+    <div class="chips" id="fstatus" role="group" aria-label="Filter by status"></div>
+    <div class="chips" id="flevel" role="group" aria-label="Filter by level"></div>
+    <div class="panel" style="padding:8px 20px"><div id="evs"></div></div>
+  </section>
+
+  <section id="athletes">
+    <h2>Top athletes</h2>
+    <p class="lead">Ranked by points, then golds, silvers and bronzes. Relay points count for the house only.</p>
+    <div class="grid" id="ath"></div>
+    <div class="sub">Best in each house</div>
+    <div class="grid" id="bph"></div>
+    <div class="sub">Age-group champions</div>
+    <div class="grid" id="agc"></div>
+    <div class="linkrow" style="margin-top:24px"><a class="btn" href="/report">Full results &amp; awards</a><a class="btn ghost" href="/api/results.csv">Download CSV</a></div>
+  </section>
+  <section id="points">
+    <h2>How points work</h2>
+    <p class="lead">One clear scale, applied the same way to every event. Relays count the same as individual events. Ties share a position.</p>
+    <div class="panel"><table id="ptab"></table></div>
+  </section>
+
+  <section id="about">
+    <img class="crest" src="/img/crest.png" alt="Machabeng College crest">
+    <h2>Machabeng College, International School of Lesotho</h2>
+    <p class="lead">An international school in Maseru that aims to give excellent pre-university education and to be one of Lesotho’s leading places to learn. Sports Day is where that community gets to play together.</p>
+    <div class="grid">
+      <div class="panel"><h3>Maseru, since 1977</h3><p>The school opened in 1977 under the rules of Lesotho’s Ministry of Education and serves local and international families.</p></div>
+      <div class="panel"><h3>IGCSE and IB Diploma</h3><p>Students prepare for the International GCSE and the International Baccalaureate, and many go on to universities abroad.</p></div>
+      <div class="panel"><h3 id="venueh">Setsoto Stadium</h3><p id="venuep">Lesotho’s national stadium in central Maseru is the venue for Sports Day on 20 November 2026.</p></div>
+      <div class="panel"><h3>A royal patron</h3><p>Her Majesty Queen ’Masenate Mohato Seeiso is the school’s Patron and a former Machabeng student.</p></div>
+    </div>
+  </section>
+
+  <section id="signin">
+    <h2>For officials</h2>
+    <p class="lead">Admins and recorders sign in on their own page to enter and edit results. Everything on this site is view-only.</p>
+    <div class="linkrow"><a class="btn" href="/staff">Staff sign-in</a><a class="btn ghost" href="/report">Printable results</a></div>
+  </section>
+  <footer>Machabeng College, International School of Lesotho. P. O. Box 1570, Maseru 100, Lesotho. Tel +266 2231 3224.<br>A Computer Science CAS project for Inter-House Sports Day, 20 November 2026.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="/js/site.js"></script>
+<script src="/js/stadium.js"></script>
+</body>
+</html>
