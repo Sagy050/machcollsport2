@@ -60,10 +60,6 @@ route("POST", "/api/login", "public", async ({ request, body }) => {
   const r = await users.login(body, clientIp(request));
   return json({ user: r.user }, 200, { "Set-Cookie": users.cookieHeader(r.token, Math.floor(users.SESSION_MS / 1000)) });
 });
-route("POST", "/api/login/google", "public", async ({ request, body }) => {
-  const r = await users.loginWithGoogle(body.access_token, clientIp(request));
-  return json({ user: r.user }, 200, { "Set-Cookie": users.cookieHeader(r.token, Math.floor(users.SESSION_MS / 1000)) });
-});
 route("POST", "/api/logout", "public", async ({ user }) => {
   await users.logout(user);
   return json({ ok: true }, 200, { "Set-Cookie": users.cookieHeader("", 0) });

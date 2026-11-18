@@ -10,12 +10,6 @@
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
 
   var ME = null, ST = null, ATH = null, USERS = null, AUDIT = null, skew = 0;
-  var cloud = window.SD_CLOUD;
-  var googleAuth = cloud && window.supabase && window.supabase.createClient
-    ? window.supabase.createClient(cloud.url, cloud.key, {
-      auth: { persistSession: true, autoRefreshToken: false, detectSessionInUrl: true, storageKey: 'sd-google-oauth' }
-    })
-    : null;
   var UI = { filter: 'live', q: '', heat: {}, last: {}, ahouse: 'all', aq: '', qacat: 'track' };
   var PENDING_ROSTER = null, PENDING_FILE = '', PARSING_ROSTER = false, IMPORTING_ROSTER = false, SEEDING_ROSTER = false, ROSTER_SUMMARY = null;
   var LOCALSTART = {};                     // clock starts pressed on this phone, until the server confirms them
@@ -233,85 +227,7 @@
     checkBootstrapStatus();
     setTimeout(function () { f.username.focus(); }, 50);
   }
-  function cleanGoogleCallbackUrl() {
-    var url = new URL(location.href);
-    ['google_signin', 'code', 'state', 'error', 'error_description', 'error_code', 'error_uri'].forEach(function (key) { url.searchParams.delete(key); });
-    url.hash = '';
-    history.replaceState(null, '', url.pathname + url.search);
-  }
-  function clearTemporaryGoogleSession() {
-    return googleAuth.auth.signOut({ scope: 'local' }).then(function (signOut) {
-      if (signOut.error) console.error('Could not clear the temporary Google session', signOut.error);
-    }, function (error) {
-      console.error('Could not clear the temporary Google session', error);
-    });
-  }
-  function finishGoogleSignIn() {
-    var params = new URLSearchParams(location.search);
-    if (params.get('google_signin') !== '1') return false;
-    var button = $('#google-login');
-    var errorBox = $('#google-login-error');
-    button.disabled = true;
-    button.querySelector('span').textContent = 'Completing Google sign-in…';
-    errorBox.textContent = '';
-    var oauthError = params.get('error_description') || params.get('error');
-    if (oauthError) {
-      cleanGoogleCallbackUrl();
-      errorBox.textContent = oauthError;
-      button.disabled = false;
-      button.querySelector('span').textContent = 'Continue with Google';
-      return true;
-    }
-    if (!googleAuth) {
-      cleanGoogleCallbackUrl();
-      errorBox.textContent = 'Google sign-in is unavailable. Please contact the site administrator.';
-      button.disabled = false;
-      button.querySelector('span').textContent = 'Continue with Google';
-      return true;
-    }
-    googleAuth.auth.getSession().then(function (result) {
-      if (result.error) throw result.error;
-      if (!result.data.session) throw new Error('Google did not return a sign-in session. Please try again.');
-      return api('POST', '/api/login/google', { access_token: result.data.session.access_token });
-    }).then(function (result) {
-      ME = result.user;
-      return clearTemporaryGoogleSession();
-    }).then(function () {
-      cleanGoogleCallbackUrl();
-      start();
-    }, function (error) {
-      cleanGoogleCallbackUrl();
-      errorBox.textContent = error.message || 'Google sign-in failed. Please try again.';
-      button.disabled = false;
-      button.querySelector('span').textContent = 'Continue with Google';
-      clearTemporaryGoogleSession();
-    });
-    return true;
-  }
   function signedOut() { if (ME) { ME = null; closeModal(); showLogin(); } }
-  $('#google-login').addEventListener('click', function () {
-    var button = $('#google-login');
-    var errorBox = $('#google-login-error');
-    errorBox.textContent = '';
-    if (!googleAuth) {
-      errorBox.textContent = 'Google sign-in is not configured for this deployment.';
-      return;
-    }
-    button.disabled = true;
-    button.querySelector('span').textContent = 'Redirecting to Google…';
-    var callback = new URL(location.pathname, location.origin);
-    callback.searchParams.set('google_signin', '1');
-    googleAuth.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: callback.toString() }
-    }).then(function (result) {
-      if (result.error) throw result.error;
-    }).catch(function (error) {
-      errorBox.textContent = error.message || 'Could not start Google sign-in.';
-      button.disabled = false;
-      button.querySelector('span').textContent = 'Continue with Google';
-    });
-  });
   $('#loginf').addEventListener('submit', function (e) {
     e.preventDefault(); var f = e.target; $('#loginerr').textContent = '';
     api('POST', '/api/login', { username: f.username.value.trim(), password: f.password.value }).then(function (r) { ME = r.user; start(); }, function (er) { $('#loginerr').textContent = er.message; });
@@ -321,17 +237,16 @@
     $('#bootstrap-error').textContent = '';
   });
   $('#bootstrap-create').addEventListener('click', function () {
-    var fields = ['#setup-google-email', '#setup-key', '#setup-name', '#setup-username', '#setup-password'].map(function (selector) { return $(selector); });
+    var fields = ['#setup-key', '#setup-name', '#setup-username', '#setup-password'].map(function (selector) { return $(selector); });
     for (var i = 0; i < fields.length; i++) if (!fields[i].reportValidity()) return;
     var button = $('#bootstrap-create');
     button.disabled = true;
     $('#bootstrap-error').textContent = '';
     api('POST', '/api/bootstrap', {
-      google_email: fields[0].value,
-      setup_key: fields[1].value,
-      display_name: fields[2].value,
-      username: fields[3].value,
-      password: fields[4].value
+      setup_key: fields[0].value,
+      display_name: fields[1].value,
+      username: fields[2].value,
+      password: fields[3].value
     }).then(function (r) {
       ME = r.user;
       $('#setup-key').value = '';
@@ -869,9 +784,9 @@
 
   /* --- 3. team --- */
   function teamSetup() {
-    var form = '<div class="card"><h2>Add a recorder</h2><p class="help">Assign each official a verified Google email for sign-in. Password sign-in remains available as a fallback.</p><form id="adduser" class="formrow"><label>Name<input name="display_name" required placeholder="Mr Mokoena" autocomplete="off"></label><label>Username<input name="username" required placeholder="mokoena" autocapitalize="none" autocomplete="off"></label><label>Google email<input name="google_email" type="email" required placeholder="official@gmail.com" autocomplete="off"></label><label>Password (8+ characters)<input name="password" required minlength="8" autocomplete="new-password"></label><label>Role<select name="role"><option value="recorder">Recorder</option><option value="admin">Admin</option></select></label><button class="btn primary">Add</button><button type="button" class="btn" data-act="genpw">Make a password</button></form></div>';
+    var form = '<div class="card"><h2>Add a recorder</h2><p class="help">One account per official, so you can see who recorded what. Share the password in person.</p><form id="adduser" class="formrow"><label>Name<input name="display_name" required placeholder="Mr Mokoena" autocomplete="off"></label><label>Username<input name="username" required placeholder="mokoena" autocapitalize="none" autocomplete="off"></label><label>Password (8+ characters)<input name="password" required minlength="8" autocomplete="off"></label><label>Role<select name="role"><option value="recorder">Recorder</option><option value="admin">Admin</option></select></label><button class="btn primary">Add</button><button type="button" class="btn" data-act="genpw">Make a password</button></form></div>';
     if (!USERS) return form + '<div class="empty">Loading…</div>';
-    var rows = USERS.map(function (u) { return '<tr><td><b>' + esc(u.display_name) + '</b><br><small>' + esc(u.username) + '</small><br><small>' + esc(u.google_email || 'No Google email assigned') + '</small></td><td>' + (u.role === 'admin' ? 'Admin' : 'Recorder') + (u.active ? '' : ' <span class="bad">(disabled)</span>') + '</td><td class="num"><button class="btn sm" data-act="usergoogle" data-id="' + u.id + '">Google email</button> <button class="btn sm" data-act="userpw" data-id="' + u.id + '">Password</button> <button class="btn sm" data-act="usertoggle" data-id="' + u.id + '">' + (u.active ? 'Disable' : 'Enable') + '</button> <button class="btn sm danger" data-act="userdel" data-id="' + u.id + '">Delete</button></td></tr>'; }).join('');
+    var rows = USERS.map(function (u) { return '<tr><td><b>' + esc(u.display_name) + '</b><br><small>' + esc(u.username) + '</small></td><td>' + (u.role === 'admin' ? 'Admin' : 'Recorder') + (u.active ? '' : ' <span class="bad">(disabled)</span>') + '</td><td class="num"><button class="btn sm" data-act="userpw" data-id="' + u.id + '">Password</button> <button class="btn sm" data-act="usertoggle" data-id="' + u.id + '">' + (u.active ? 'Disable' : 'Enable') + '</button> <button class="btn sm danger" data-act="userdel" data-id="' + u.id + '">Delete</button></td></tr>'; }).join('');
     return form + '<div class="card"><h3>People (' + USERS.length + ')</h3><div class="tw"><table><tbody>' + rows + '</tbody></table></div></div>';
   }
 
@@ -956,20 +871,6 @@
     delevent: function (el) { var ev = evOf(+el.dataset.id); ask('Delete ' + ev.name + '?', 'Its ' + ev.count + ' entries and any results are deleted too.', 'Delete event', true).then(function (y) { if (y) api('DELETE', '/api/events/' + ev.id).then(function () { location.hash = '#/setup/events'; return load(); }).then(render, fail); }); },
     makeheats: function (el) { api('POST', '/api/events/' + el.dataset.id + '/heats', { size: +$('#hsize').value }).then(function (r) { toast(r.heats + ' heat' + (r.heats === 1 ? '' : 's')); return load(); }).then(render, fail); },
     genpw: function () { var w = ['Hawk', 'Eagle', 'Raven', 'Falcon', 'Track', 'Sprint', 'Maseru', 'Jump'], p = w[Math.floor(Math.random() * w.length)] + '-' + (1000 + Math.floor(Math.random() * 9000)) + '-' + w[Math.floor(Math.random() * w.length)]; $('#adduser input[name=password]').value = p; toast('Password: ' + p); },
-    usergoogle: function (el) {
-      var u = USERS.filter(function (x) { return x.id === +el.dataset.id; })[0];
-      modal('Google sign-in email', '<form id="google-email-form"><label>Verified Google email<input name="google_email" type="email" maxlength="254" value="' + esc(u.google_email || '') + '" placeholder="official@gmail.com"></label><p class="help">Only this verified Google account will be able to sign in as ' + esc(u.display_name) + '. Leave it blank to disable Google sign-in for this staff account.</p><div class="row"><button class="btn primary">Save email</button><button type="button" class="btn" data-close>Cancel</button></div></form>', function (d) {
-        $('#google-email-form', d).onsubmit = function (event) {
-          event.preventDefault();
-          api('PATCH', '/api/users/' + u.id, { google_email: event.target.google_email.value.trim() }).then(function () {
-            closeModal();
-            USERS = null;
-            render();
-            toast('Google email saved');
-          }, fail);
-        };
-      });
-    },
     userpw: function (el) { var u = USERS.filter(function (x) { return x.id === +el.dataset.id; })[0]; modal('New password for ' + u.display_name, '<form id="pwf"><label>New password (8+ characters)<input name="pw" minlength="8" required autocomplete="off"></label><button class="btn primary" style="margin-top:10px">Set password</button></form>', function (d) { $('#pwf', d).onsubmit = function (e) { e.preventDefault(); api('POST', '/api/users/' + u.id + '/password', { password: e.target.pw.value }).then(function () { closeModal(); toast('Password changed; they are signed out'); }, fail); }; }); },
     usertoggle: function (el) { var u = USERS.filter(function (x) { return x.id === +el.dataset.id; })[0]; api('PATCH', '/api/users/' + u.id, { active: !u.active }).then(function () { USERS = null; render(); }, fail); },
     userdel: function (el) { var u = USERS.filter(function (x) { return x.id === +el.dataset.id; })[0]; ask('Delete ' + u.display_name + '?', 'Their account is removed. Results they recorded stay.', 'Delete', true).then(function (y) { if (y) api('DELETE', '/api/users/' + u.id).then(function () { USERS = null; render(); }, fail); }); },
@@ -1025,7 +926,7 @@
   document.addEventListener('submit', function (e) {
     var f = e.target;
     if (f.id === 'addath') { e.preventDefault(); api('POST', '/api/athletes', { full_name: f.full_name.value, house_id: +f.house_id.value, level: f.level.value, gender: f.gender.value }).then(function (r) { closeModal(); toast('Added ' + r.athlete.bib); return Promise.all([refreshAth(), load()]); }).then(render, fail); }
-    if (f.id === 'adduser') { e.preventDefault(); api('POST', '/api/users', { display_name: f.display_name.value, username: f.username.value, google_email: f.google_email.value, password: f.password.value, role: f.role.value }).then(function () { toast('Account created'); f.reset(); USERS = null; render(); }, fail); }
+    if (f.id === 'adduser') { e.preventDefault(); api('POST', '/api/users', { display_name: f.display_name.value, username: f.username.value, password: f.password.value, role: f.role.value }).then(function () { toast('Account created'); f.reset(); USERS = null; render(); }, fail); }
     if (f.id === 'setf') {
       e.preventDefault(); var pts = f.points.value.split(/[ ,;]+/).filter(Boolean).map(Number);
       api('PATCH', '/api/settings', { title: f.title.value, venue: f.venue.value, date: f.date.value, start: f.start.value, nameDisplay: f.nameDisplay.value, scheme: { points: pts, rest: +f.rest.value } }).then(function () { toast('Saved'); return load(); }).then(render, fail);
@@ -1078,7 +979,5 @@
   });
 
   /* ------------------------------------------------------------------ go */
-  if (!finishGoogleSignIn()) {
-    api('GET', '/api/me').then(function (r) { if (r.user) { ME = r.user; start(); } else showLogin(); }, function () { showLogin(); });
-  }
+  api('GET', '/api/me').then(function (r) { if (r.user) { ME = r.user; start(); } else showLogin(); }, function () { showLogin(); });
 })();

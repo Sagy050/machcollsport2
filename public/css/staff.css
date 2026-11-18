@@ -155,26 +155,6 @@ body:has(#login:not([hidden])) { display: grid; min-height: 100vh; background: #
 .logincard .btn { width: 100%; justify-content: space-between; }
 .login-help { margin: 0; color: #a1a1aa; font-size: 13px; text-align: center; }
 .login-help a { color: #7dd3fc; font-weight: 650; }
-.google-signin {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  border: 1px solid #52525b;
-  border-radius: 12px;
-  background: #fff;
-  color: #18181b;
-  font: 700 14px "Plus Jakarta Sans", sans-serif;
-  cursor: pointer;
-  transition: background .18s ease, transform .18s ease;
-}
-.google-signin:hover { background: #f4f4f5; transform: translateY(-1px); }
-.google-signin:disabled { cursor: wait; opacity: .7; transform: none; }
-.google-signin svg { width: 18px; height: 18px; }
-.login-divider { display: flex; align-items: center; gap: 12px; color: #71717a; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.login-divider::before, .login-divider::after { height: 1px; flex: 1; background: #3f3f46; content: ""; }
-
 /* Sticky glass header and house ticker */
 .top {
   position: sticky;

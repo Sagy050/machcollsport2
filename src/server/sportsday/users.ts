@@ -16,7 +16,7 @@ export const SESSION_MS = 24 * 3600e3;
 export const COOKIE = "sd_session";
 const STAFF_ROLES = ["admin", "recorder"] as const;
 type Role = (typeof STAFF_ROLES)[number];
-type ProfileRow = { id: string; staff_no: number; username: string | null; display_name: string | null; email: string | null; google_email: string | null; active: boolean; last_login: number | null };
+type ProfileRow = { id: string; staff_no: number; username: string | null; display_name: string | null; email: string | null; active: boolean; last_login: number | null };
 
 async function q<T = Any>(p: PromiseLike<{ data: Any; error: Any }>): Promise<T> {
   const { data, error } = await p;
@@ -24,17 +24,6 @@ async function q<T = Any>(p: PromiseLike<{ data: Any; error: Any }>): Promise<T>
   return data as T;
 }
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => "\\" + c);
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function googleEmail(value: unknown, required = false): string | null {
-  const email = str(value, { field: "Google email", max: 254 }).toLowerCase();
-  if (!email) {
-    if (required) throw bad("Google email is required");
-    return null;
-  }
-  if (!EMAIL_PATTERN.test(email)) throw bad("Enter a valid Google email address");
-  return email;
-}
 
 export function checkPassword(pw: unknown, field = "Password"): string {
   if (typeof pw !== "string" || pw.length < 8) throw bad(`${field} must be at least 8 characters`);
@@ -160,58 +149,6 @@ export async function login(body: Any, ip: string) {
   return { token, user: { id: actor.id, username: actor.username, display_name: actor.display_name, role } };
 }
 
-export async function loginWithGoogle(accessToken: unknown, ip: string) {
-  const token = str(accessToken, { field: "Google sign-in token", required: true, max: 8192 });
-  const since = now() - 10 * 60e3;
-  const ipLike = `%"ip":"${likeEscape(ip)}"%`;
-  const { count, error: rateError } = await db()
-    .from("audit")
-    .select("id", { count: "exact", head: true })
-    .eq("action", "login.google.fail")
-    .gt("ts", since)
-    .like("detail", ipLike);
-  if (rateError) throw dbError(rateError);
-  if ((count || 0) >= 40) throw new HttpError(429, "Too many failed sign-ins. Wait a few minutes and try again.");
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error) {
-    if (error.status && error.status >= 500) throw new HttpError(503, "Google sign-in is temporarily unavailable");
-    await audit(null, "login.google.fail", { ip });
-    throw new HttpError(401, "Google sign-in could not be verified");
-  }
-  const authUser = data.user;
-  const identity = authUser?.identities?.find((item) => item.provider === "google");
-  const verified = !!authUser?.email_confirmed_at;
-  const email = verified ? googleEmail(authUser?.email) : null;
-  const rows = email
-    ? await q<ProfileRow[]>(db().from("profiles").select("*").eq("google_email", email).eq("active", true).not("username", "is", null).limit(1))
-    : [];
-  const profile = rows[0];
-  const role = profile ? (await roleMap([profile.id])).get(profile.id) : undefined;
-  if (!profile || !role || !identity || !email) {
-    await audit(null, "login.google.fail", { ip }, email || "google");
-    throw new HttpError(401, "This Google account is not authorized for staff access");
-  }
-
-  const sessionToken = randomToken();
-  await q(db().from("staff_sessions").insert({
-    token_hash: await sha256(sessionToken),
-    profile_id: profile.id,
-    created_at: now(),
-    expires_at: now() + SESSION_MS,
-  }));
-  await q(db().from("profiles").update({ last_login: now() }).eq("id", profile.id));
-  const actor = {
-    id: profile.staff_no,
-    uid: profile.id,
-    username: profile.username!,
-    display_name: profile.display_name || profile.username!,
-    role,
-  };
-  await audit(actor, "login.google", { ip });
-  return { token: sessionToken, user: { id: actor.id, username: actor.username, display_name: actor.display_name, role } };
-}
-
 export async function logout(user: SessionUser | null) {
   if (user) await q(db().from("staff_sessions").delete().eq("token_hash", user.token));
 }
@@ -299,7 +236,6 @@ export async function bootstrapAdmin(body: Any, ip: string) {
       display_name: body.display_name,
       password: checkPassword(body.password),
       role: "admin",
-      google_email: googleEmail(body.google_email, true),
     };
     await createUser(null, user);
     return await login(user, ip);
@@ -315,7 +251,6 @@ const publicUser = (p: ProfileRow, role: Role) => ({
   id: p.staff_no,
   username: p.username,
   display_name: p.display_name || p.username,
-  google_email: p.google_email,
   role,
   active: !!p.active,
   last_login: p.last_login,
@@ -344,7 +279,6 @@ function cleanUser(b: Any, cur: { p: ProfileRow; role: Role } | null) {
   const out = {
     username: b.username !== undefined || !cur ? str(b.username, { field: "Username", required: true, min: 3, max: 32 }) : cur.p.username!,
     display_name: b.display_name !== undefined || !cur ? str(b.display_name, { field: "Name", required: true, max: 60 }) : cur.p.display_name || "",
-    google_email: b.google_email !== undefined || !cur ? googleEmail(b.google_email) : cur.p.google_email,
     role: (b.role !== undefined || !cur ? oneOf(b.role, STAFF_ROLES, "Role") : cur.role) as Role,
     active: b.active !== undefined ? !!b.active : cur ? cur.p.active : true,
   };
@@ -355,23 +289,17 @@ async function usernameTaken(username: string, exceptUid?: string) {
   const rows = await q<{ id: string }[]>(db().from("profiles").select("id").ilike("username", likeEscape(username)));
   return rows.some((r) => r.id !== exceptUid);
 }
-async function googleEmailTaken(email: string, exceptUid?: string) {
-  const rows = await q<{ id: string }[]>(db().from("profiles").select("id").eq("google_email", email));
-  return rows.some((r) => r.id !== exceptUid);
-}
-
 export async function createUser(actor: Actor, b: Any) {
   const pw = checkPassword(b.password);
   const f = cleanUser(b, null);
   if (await usernameTaken(f.username)) throw new HttpError(409, "That username is taken");
-  if (f.google_email && (await googleEmailTaken(f.google_email))) throw new HttpError(409, "That Google email is already assigned");
   // Staff sign in with a username; the auth service needs an address, so each account gets a private placeholder one.
   const email = `${f.username.toLowerCase()}.${Date.now().toString(36)}@staff.machabeng-sportsday.app`;
   const { data, error } = await supabaseAdmin.auth.admin.createUser({ email, password: pw, email_confirm: true, user_metadata: { display_name: f.display_name } });
   if (error || !data.user) throw new HttpError(400, /password/i.test(error?.message || "") ? `Password not accepted: ${error!.message}` : "Could not create that account");
   const uid = data.user.id;
   try {
-    await q(db().from("profiles").upsert({ id: uid, username: f.username, display_name: f.display_name, email, google_email: f.google_email, active: true }));
+    await q(db().from("profiles").upsert({ id: uid, username: f.username, display_name: f.display_name, email, active: true }));
     await setRole(uid, f.role);
     await audit(actor, "user.create", { username: f.username, role: f.role });
   } catch (error) {
@@ -389,10 +317,9 @@ export async function updateUser(actor: Actor, id: number, b: Any) {
   const cur = await byStaffNo(id);
   const f = cleanUser(b, cur);
   if (await usernameTaken(f.username, cur.p.id)) throw new HttpError(409, "That username is taken");
-  if (f.google_email && (await googleEmailTaken(f.google_email, cur.p.id))) throw new HttpError(409, "That Google email is already assigned");
   const losesAdmin = cur.role === "admin" && cur.p.active && (f.role !== "admin" || !f.active);
   if (losesAdmin && (await activeAdmins()) <= 1) throw new HttpError(409, "There must be at least one active admin");
-  await q(db().from("profiles").update({ username: f.username, display_name: f.display_name, google_email: f.google_email, active: f.active }).eq("id", cur.p.id));
+  await q(db().from("profiles").update({ username: f.username, display_name: f.display_name, active: f.active }).eq("id", cur.p.id));
   if (f.role !== cur.role) await setRole(cur.p.id, f.role);
   if (!f.active || f.role !== cur.role) await killSessions(cur.p.id);
   await audit(actor, "user.update", { id, ...f });
