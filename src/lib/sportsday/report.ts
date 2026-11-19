@@ -22,6 +22,7 @@ export type AthleteRow = {
   full_name: string;
   house_id: number;
   level: string | null;
+  levels: string[];
   gender: string | null;
   created_at: number;
 };
@@ -187,7 +188,7 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
         })),
       relaySplits: relaySplitsByEntry.get(e.id) || [],
     };
-    if (staff) Object.assign(out, { by: e.by_name || null, at: e.updated_at, level: a ? a.level : null, gender: a ? a.gender : null });
+    if (staff) Object.assign(out, { by: e.by_name || null, at: e.updated_at, level: a ? a.level : null, levels: a ? a.levels : [], gender: a ? a.gender : null });
     return out;
   };
   const evList = events
@@ -275,10 +276,35 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
   type AStat = (typeof athleteStats)[number];
   const byRank = (list: AStat[]) => list.slice().sort((a, b) => cmpStats(a, b) || a.name.localeCompare(b.name));
   const top = byRank(athleteStats).filter((a) => a.points > 0);
+  const ageStats = new Map<number, Map<string, Scored[]>>();
+  for (const e of scoredOk) {
+    if (e.athlete_id === null) continue;
+    const level = eventById.get(e.event_id)?.level;
+    if (!level) continue;
+    if (!ageStats.has(e.athlete_id)) ageStats.set(e.athlete_id, new Map());
+    const byLevel = ageStats.get(e.athlete_id)!;
+    if (!byLevel.has(level)) byLevel.set(level, []);
+    byLevel.get(level)!.push(e);
+  }
+  const athleteAgeStats: (AStat & { level: string })[] = [];
+  for (const [id, byLevel] of ageStats) {
+    const a = athleteById.get(id);
+    if (!a) continue;
+    for (const [level, rows] of byLevel) {
+      athleteAgeStats.push({
+        athlete_id: id,
+        name: formatName(a.full_name, mode),
+        house_id: a.house_id,
+        level,
+        gender: a.gender,
+        ...medalTally(rows),
+      });
+    }
+  }
   const GL: Record<string, string> = { F: "girls", M: "boys" };
   const ageGroups: Record<string, unknown>[] = [];
   for (const lvl of LEVELS) {
-    const inLevel = athleteStats.filter((a) => a.level === lvl);
+    const inLevel = athleteAgeStats.filter((a) => a.level === lvl);
     const all = champion(inLevel);
     if (all) ageGroups.push({ label: lvl, ...all });
     for (const g of ["F", "M"]) {

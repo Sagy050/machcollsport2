@@ -533,11 +533,25 @@
   }
   var refreshAth = function () { return api('GET', '/api/athletes').then(function (d) { ATH = d.athletes; }); };
   var houseSelect = function (name, all) { return '<select name="' + name + '">' + (all ? '<option value="">All houses</option>' : '') + ST.houses.map(function (h) { return '<option value="' + h.id + '">' + esc(h.name) + '</option>'; }).join('') + '</select>'; };
+  var athleteLevels = function (a) { return a.levels && a.levels.length ? a.levels : a.level ? [a.level] : []; };
+  var athleteFits = function (a, ev) { return (ev.level === 'Mixed' || athleteLevels(a).indexOf(ev.level) > -1) && (!ev.gender || ev.gender === a.gender); };
+  var levelChips = function (selected) {
+    return '<div class="selection-row">' + LEVELS.map(function (level) {
+      var on = selected.indexOf(level) > -1;
+      return '<label class="selection-chip' + (on ? ' on' : '') + '"><input type="checkbox" name="levels" value="' + esc(level) + '"' + (on ? ' checked' : '') + '><span class="selection-check" aria-hidden="true">✓</span><span>' + esc(level) + '</span></label>';
+    }).join('') + '</div>';
+  };
+  var bindLevelChips = function (form) {
+    $$('input[name="levels"]', form).forEach(function (input) {
+      input.onchange = function () { input.closest('.selection-chip').classList.toggle('on', input.checked); };
+    });
+  };
+  var selectedLevels = function (form) { return $$('input[name="levels"]:checked', form).map(function (input) { return input.value; }); };
 
   /* --- 1. athletes --- */
   function athletesSetup() {
     var fileDetails = PENDING_ROSTER ? '<div class="file-preview"><div><b>' + esc(PENDING_FILE) + '</b><small>' + PENDING_ROSTER.length + ' athlete rows detected · ' + PENDING_ROSTER.filter(function (row) { return row.events; }).length + ' with event requests</small></div><div class="file-preview-actions"><button class="btn sm" data-act="cancelimport">Remove file</button><button class="btn primary sm" data-act="import"' + (IMPORTING_ROSTER ? ' disabled' : '') + '>' + (IMPORTING_ROSTER ? 'Importing…' : 'Import ' + PENDING_ROSTER.length + ' athletes') + '</button></div><ul>' + PENDING_ROSTER.slice(0, 4).map(function (row) { return '<li>' + esc(row.full_name || 'Name missing') + ' · ' + esc(row.house || 'House missing') + ' · ' + esc(row.level || 'Age group missing') + '</li>'; }).join('') + (PENDING_ROSTER.length > 4 ? '<li>and ' + (PENDING_ROSTER.length - 4) + ' more…</li>' : '') + '</ul></div>' : '';
-    var upload = '<section class="roster-upload card"><div class="dropzone-wrap"><label class="dropzone" id="roster-dropzone" for="csvfile" tabindex="0"><span class="upload-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v4h14v-4"></path></svg></span><span class="upload-title"><b>' + (PARSING_ROSTER ? 'Reading your roster…' : 'Drop your roster here or browse files') + '</b><small>Excel workbook or delimited text · up to 8 MB</small></span><span class="file-types">XLSX <i>·</i> XLS <i>·</i> CSV <i>·</i> TXT</span><input type="file" id="csvfile" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" aria-label="Choose an Excel or CSV roster"' + (PARSING_ROSTER ? ' disabled' : '') + '></label><div class="column-hint"><b>Columns we recognize</b><span>Name</span><span>House</span><span>Age Group</span><span>Gender</span><span>Events <small>optional</small></span></div></div><div class="roster-upload-copy"><p class="eyebrow">ROSTER INTAKE</p><h2>Bring your team in.</h2><p>We read the first worksheet, match column headings, and prepare category-ready athletes. Houses, age groups and gender values are checked when you import.</p><a class="template-link" href="/api/athletes/template.xlsx">Download sample Excel template <span aria-hidden="true">↓</span></a><small>Events can contain names such as <b>100m, Long jump</b>. Bibs are generated automatically if omitted.</small></div></section>' + fileDetails;
+    var upload = '<section class="roster-upload card"><div class="dropzone-wrap"><label class="dropzone" id="roster-dropzone" for="csvfile" tabindex="0"><span class="upload-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v4h14v-4"></path></svg></span><span class="upload-title"><b>' + (PARSING_ROSTER ? 'Reading your roster…' : 'Drop your roster here or browse files') + '</b><small>Excel workbook or delimited text · up to 8 MB</small></span><span class="file-types">XLSX <i>·</i> XLS <i>·</i> CSV <i>·</i> TXT</span><input type="file" id="csvfile" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" aria-label="Choose an Excel or CSV roster"' + (PARSING_ROSTER ? ' disabled' : '') + '></label><div class="column-hint"><b>Columns we recognize</b><span>Name</span><span>House</span><span>Age Groups</span><span>Gender</span><span>Events <small>optional</small></span></div></div><div class="roster-upload-copy"><p class="eyebrow">ROSTER INTAKE</p><h2>Bring your team in.</h2><p>We read the first worksheet, match column headings, and prepare category-ready athletes. An athlete can belong to multiple age groups; separate them with semicolons.</p><a class="template-link" href="/api/athletes/template.xlsx">Download sample Excel template <span aria-hidden="true">↓</span></a><small>Events can contain names such as <b>100m, Long jump</b>. Bibs are generated automatically if omitted.</small></div></section>' + fileDetails;
     if (!ATH) return upload + '<div class="empty">Loading the roster…</div>';
 
     var scheduled = ST.events.filter(function (ev) { return ev.status === 'scheduled'; }).length;
@@ -556,7 +570,7 @@
     var chips = '<div class="chips"><button data-act="ahouse" data-k="all" aria-pressed="' + (hf === 'all') + '">All (' + ATH.length + ')</button>' + ST.houses.map(function (h, i) { return '<button class="house-' + houseKey(h) + '" data-act="ahouse" data-k="' + h.id + '" aria-pressed="' + (hf === String(h.id) || hf === h.id) + '"><span class="dot" style="background:' + esc(houseColor(h)) + '"></span>' + esc(h.name) + ' (' + per[i] + ')</button>'; }).join('') + '</div>';
     var rows = list.slice(0, 400).map(function (a) {
       var h = houseOf(a.house_id), eventCount = Number(a.entries) || 0;
-      return '<tr class="roster-row"><td><b class="roster-bib">' + esc(a.bib) + '</b></td><td><b class="roster-name">' + esc(a.full_name) + '</b></td><td><span class="dot" style="background:' + esc(houseColor(h)) + '"></span>' + esc(h.name) + '</td><td>' + esc(a.level || '–') + '</td><td>' + (a.gender === 'F' ? 'Girl' : a.gender === 'M' ? 'Boy' : '–') + '</td><td><span class="entry-count">' + eventCount + ' event' + (eventCount === 1 ? '' : 's') + ' entered</span></td><td><div class="roster-actions"><button class="btn sm" data-act="editath" data-id="' + a.id + '">Edit</button><button class="btn sm danger" data-act="deleteath" data-id="' + a.id + '">Remove</button></div></td></tr>';
+      return '<tr class="roster-row"><td><b class="roster-bib">' + esc(a.bib) + '</b></td><td><b class="roster-name">' + esc(a.full_name) + '</b></td><td><span class="dot" style="background:' + esc(houseColor(h)) + '"></span>' + esc(h.name) + '</td><td>' + esc(athleteLevels(a).join(', ') || '–') + '</td><td>' + (a.gender === 'F' ? 'Girl' : a.gender === 'M' ? 'Boy' : '–') + '</td><td><span class="entry-count">' + eventCount + ' event' + (eventCount === 1 ? '' : 's') + ' entered</span></td><td><div class="roster-actions"><button class="btn sm" data-act="editath" data-id="' + a.id + '">Edit</button><button class="btn sm danger" data-act="deleteath" data-id="' + a.id + '">Remove</button></div></td></tr>';
     }).join('');
     var roster = '<section class="roster-table-card card"><div class="roster-table-heading"><div><p class="eyebrow">ATHLETE DIRECTORY</p><h2>Roster <span>' + ATH.length + '</span></h2></div><div class="roster-table-actions"><a class="btn sm" href="/api/athletes.csv">Export Roster CSV</a><button class="btn sm danger" data-act="clearroster"' + (!ATH.length ? ' disabled' : '') + '>Clear Roster</button></div></div><div class="roster-filters"><label class="roster-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="m13 13 4 4"></path></svg><input id="aq" type="search" placeholder="Search athlete or bib..." value="' + esc(UI.aq) + '" aria-label="Search athlete or bib"></label>' + chips + '</div><div class="tw roster-table-wrap"><table><thead><tr><th>Bib</th><th>Name</th><th>House</th><th>Age group</th><th>Gender</th><th>Events entered</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>' + (rows || '<tr><td colspan="7" class="empty">No athletes match this view. Add a roster or change the search/filter.</td></tr>') + '</tbody></table></div>' + (list.length > 400 ? '<p class="help">Showing the first 400. Use search to narrow down.</p>' : '') + '</section>';
     return upload + quick + seed + notice + roster;
@@ -589,7 +603,7 @@
       requested.forEach(function (name) {
         var matches = ST.events.filter(function (ev) {
           return ev.status === 'scheduled' && normalizedText(ev.name) === normalizedText(name) &&
-            (ev.level === 'Mixed' || ev.level === athlete.level) && (!ev.gender || ev.gender === athlete.gender);
+            athleteFits(athlete, ev);
         });
         if (!matches.length) { failures.push(row.full_name + ': no scheduled eligible event named "' + name + '"'); return; }
         matches.forEach(function (ev) {
@@ -653,7 +667,8 @@
     });
   }
   function quickAddAthlete() {
-    modal('Quick add athlete', '<form id="addath" class="formrow quick-add-form"><label>Full name<input name="full_name" required autocomplete="off"></label><label>House' + houseSelect('house_id') + '</label><label>Age group<select name="level"><option value="">Choose age group</option>' + LEVELS.map(function (level) { return '<option>' + level + '</option>'; }).join('') + '</select></label><label>Gender<select name="gender"><option value="">Choose gender</option><option value="F">Girl</option><option value="M">Boy</option></select></label><button class="btn primary">Add athlete</button></form>', function (dialog) {
+    modal('Quick add athlete', '<form id="addath" class="formrow quick-add-form"><label>Full name<input name="full_name" required autocomplete="off"></label><label>House' + houseSelect('house_id') + '</label><div><p class="micro-label">ELIGIBLE AGE GROUPS</p>' + levelChips([]) + '</div><label>Gender<select name="gender"><option value="">Choose gender</option><option value="F">Girl</option><option value="M">Boy</option></select></label><button class="btn primary">Add athlete</button></form>', function (dialog) {
+      bindLevelChips($('#addath', dialog));
       $('#addath input', dialog).focus();
     });
   }
@@ -677,9 +692,10 @@
   }
   function editAthlete(id) {
     var a = ATH.filter(function (x) { return x.id === +id; })[0]; if (!a) return;
-    modal('Edit ' + a.bib, '<form id="edath" class="formrow" style="grid-template-columns:1fr"><label>Full name<input name="full_name" value="' + esc(a.full_name) + '" required></label><label>House' + houseSelect('house_id') + '</label><label>Age group<select name="level"><option value="">(none)</option>' + LEVELS.map(function (l) { return '<option' + (a.level === l ? ' selected' : '') + '>' + l + '</option>'; }).join('') + '</select></label><label>Gender<select name="gender"><option value="">(none)</option><option value="F"' + (a.gender === 'F' ? ' selected' : '') + '>Girl</option><option value="M"' + (a.gender === 'M' ? ' selected' : '') + '>Boy</option></select></label><label>Bib<input name="bib" value="' + esc(a.bib) + '"></label><div class="row"><button class="btn primary grow">Save</button><button type="button" class="btn danger" data-del>Delete</button></div></form>', function (d) {
+    modal('Edit ' + a.bib, '<form id="edath" class="formrow" style="grid-template-columns:1fr"><label>Full name<input name="full_name" value="' + esc(a.full_name) + '" required></label><label>House' + houseSelect('house_id') + '</label><div><p class="micro-label">ELIGIBLE AGE GROUPS</p>' + levelChips(athleteLevels(a)) + '</div><label>Gender<select name="gender"><option value="">(none)</option><option value="F"' + (a.gender === 'F' ? ' selected' : '') + '>Girl</option><option value="M"' + (a.gender === 'M' ? ' selected' : '') + '>Boy</option></select></label><label>Bib<input name="bib" value="' + esc(a.bib) + '"></label><div class="row"><button class="btn primary grow">Save</button><button type="button" class="btn danger" data-del>Delete</button></div></form>', function (d) {
       var f = $('#edath', d); f.house_id.value = a.house_id;
-      f.onsubmit = function (e) { e.preventDefault(); api('PATCH', '/api/athletes/' + a.id, { full_name: f.full_name.value, house_id: +f.house_id.value, level: f.level.value, gender: f.gender.value, bib: f.bib.value }).then(function () { closeModal(); return Promise.all([refreshAth(), load()]); }).then(render, fail); };
+      bindLevelChips(f);
+      f.onsubmit = function (e) { e.preventDefault(); api('PATCH', '/api/athletes/' + a.id, { full_name: f.full_name.value, house_id: +f.house_id.value, levels: selectedLevels(f), gender: f.gender.value, bib: f.bib.value }).then(function () { closeModal(); return Promise.all([refreshAth(), load()]); }).then(render, fail); };
       $('[data-del]', d).onclick = function () { ask('Delete ' + a.full_name + '?', 'They are removed from the list and from every event they were entered in.', 'Delete', true).then(function (y) { if (y) api('DELETE', '/api/athletes/' + a.id).then(function () { return Promise.all([refreshAth(), load()]); }).then(render, fail); }); };
     });
   }
@@ -724,7 +740,7 @@
       var h = houseOf(e.house_id);
       if (relay) {
         var members = (e.relayMembers || []).slice().sort(function (a, b) { return a.leg - b.leg; });
-        var eligible = ATH ? ATH.filter(function (a) { return a.house_id === e.house_id && (ev.level === 'Mixed' || a.level === ev.level) && (!ev.gender || a.gender === ev.gender); }) : [];
+        var eligible = ATH ? ATH.filter(function (a) { return a.house_id === e.house_id && athleteFits(a, ev); }) : [];
         var names = members.length === relayLegs ? members.map(function (m) { return 'Leg ' + m.leg + ': ' + esc(m.name); }).join('<br>') :
           eligible.length < relayLegs ? '<span class="bad">Only ' + eligible.length + ' eligible runners; need ' + relayLegs + '</span>' : '<span class="bad">' + members.length + ' of ' + relayLegs + ' runners selected</span>';
         return '<tr><td>' + esc(h.name) + '</td><td colspan="2">' + names + '</td><td><button class="btn sm" data-act="relaylineup" data-id="' + e.id + '" data-house="' + e.house_id + '"' + (eligible.length < relayLegs ? ' disabled' : '') + '>' + (members.length === relayLegs ? 'Change runners' : 'Set ' + relayLegs + ' runners') + '</button></td><td></td></tr>';
@@ -742,7 +758,7 @@
     if (!ev || !entry || !ATH) return;
     var current = (entry.e.relayMembers || []).slice().sort(function (a, b) { return a.leg - b.leg; });
     var candidates = ATH.filter(function (a) {
-      return a.house_id === houseId && (ev.level === 'Mixed' || a.level === ev.level) && (!ev.gender || a.gender === ev.gender);
+      return a.house_id === houseId && athleteFits(a, ev);
     });
     var relayLegs = ev.relayLegs || 4;
     var options = '<option value="">Choose a runner</option>' + candidates.map(function (a) {
@@ -767,9 +783,9 @@
     var ev = evOf(id); if (!ev) return;
     var have = {}; ev.entries.forEach(function (e) { if (e.athlete_id) have[e.athlete_id] = 1; });
     var cand = ATH.filter(function (a) { return !have[a.id]; });
-    var fits = function (a) { return (ev.level === 'Mixed' || a.level === ev.level) && (!ev.gender || a.gender === ev.gender); };
+    var fits = function (a) { return athleteFits(a, ev); };
     modal('Add athletes to ' + ev.name, '<input id="cq" type="search" placeholder="Search" aria-label="Search athletes"><div class="row"><button class="btn sm" type="button" data-sel="fit">Select who fits</button><button class="btn sm" type="button" data-sel="all">Select all</button><button class="btn sm" type="button" data-sel="none">None</button></div><div id="clist" style="max-height:46vh;overflow:auto;display:grid;gap:4px">' +
-      cand.map(function (a) { var h = houseOf(a.house_id); return '<label class="chips" style="margin:0;display:flex;font-weight:400;border:0;cursor:pointer" data-t="' + esc((a.full_name + ' ' + a.bib).toLowerCase()) + '"><input type="checkbox" value="' + a.id + '" data-fit="' + (fits(a) ? 1 : 0) + '"> <span class="dot" style="background:' + esc(houseColor(h)) + '"></span><b>' + esc(a.bib) + '</b>&nbsp;' + esc(a.full_name) + ' <small>&nbsp;' + esc((a.level || '') + ' ' + (a.gender || '')) + '</small></label>'; }).join('') + (cand.length ? '' : '<div class="empty">Everyone is already in this event.</div>') + '</div><button class="btn primary big" data-go>Add selected</button>', function (d) {
+      cand.map(function (a) { var h = houseOf(a.house_id); return '<label class="chips" style="margin:0;display:flex;font-weight:400;border:0;cursor:pointer" data-t="' + esc((a.full_name + ' ' + a.bib).toLowerCase()) + '"><input type="checkbox" value="' + a.id + '" data-fit="' + (fits(a) ? 1 : 0) + '"> <span class="dot" style="background:' + esc(houseColor(h)) + '"></span><b>' + esc(a.bib) + '</b>&nbsp;' + esc(a.full_name) + ' <small>&nbsp;' + esc((athleteLevels(a).join(', ') || '') + ' ' + (a.gender || '')) + '</small></label>'; }).join('') + (cand.length ? '' : '<div class="empty">Everyone is already in this event.</div>') + '</div><button class="btn primary big" data-go>Add selected</button>', function (d) {
       var boxes = $$('#clist input', d);
       $$('[data-sel]', d).forEach(function (b) { b.onclick = function () { boxes.forEach(function (x) { x.checked = b.dataset.sel === 'all' || (b.dataset.sel === 'fit' && x.dataset.fit === '1'); }); }; });
       $('#cq', d).oninput = function (e) { var q = e.target.value.toLowerCase(); $$('#clist label', d).forEach(function (l) { l.style.display = l.dataset.t.indexOf(q) > -1 ? '' : 'none'; }); };
@@ -929,7 +945,7 @@
   });
   document.addEventListener('submit', function (e) {
     var f = e.target;
-    if (f.id === 'addath') { e.preventDefault(); api('POST', '/api/athletes', { full_name: f.full_name.value, house_id: +f.house_id.value, level: f.level.value, gender: f.gender.value }).then(function (r) { closeModal(); toast('Added ' + r.athlete.bib); return Promise.all([refreshAth(), load()]); }).then(render, fail); }
+    if (f.id === 'addath') { e.preventDefault(); api('POST', '/api/athletes', { full_name: f.full_name.value, house_id: +f.house_id.value, levels: selectedLevels(f), gender: f.gender.value }).then(function (r) { closeModal(); toast('Added ' + r.athlete.bib); return Promise.all([refreshAth(), load()]); }).then(render, fail); }
     if (f.id === 'adduser') { e.preventDefault(); api('POST', '/api/users', { display_name: f.display_name.value, username: f.username.value, password: f.password.value, role: f.role.value }).then(function () { toast('Account created'); f.reset(); USERS = null; render(); }, fail); }
     if (f.id === 'setf') {
       e.preventDefault(); var pts = f.points.value.split(/[ ,;]+/).filter(Boolean).map(Number);

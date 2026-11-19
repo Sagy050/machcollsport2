@@ -318,16 +318,31 @@ async function nextBib(house: HouseRow) {
   return bibFrom(letter, rows.map((r) => r.bib));
 }
 
-type AthleteFields = { full_name: string; house_id: number; level: string | null; gender: string | null; bib: string };
+type AthleteFields = { full_name: string; house_id: number; level: string | null; levels: string[]; gender: string | null; bib: string };
+function cleanLevels(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : String(value ?? "").split(/[;,|]/);
+  return [...new Set(values.map((item) => String(item ?? "").trim()).filter(Boolean).map((item) => oneOf(item, ATHLETE_LEVELS, "Age group")))];
+}
 async function cleanAthlete(b: Body, cur: AthleteRow | null): Promise<AthleteFields> {
+  const levels =
+    b.levels !== undefined
+      ? cleanLevels(b.levels)
+      : b.level !== undefined
+        ? cleanLevels(b.level)
+        : cur?.levels?.length
+          ? cur.levels
+          : cur?.level
+            ? [cur.level]
+            : [];
+  const primaryLevel = cur?.level && levels.includes(cur.level) ? cur.level : levels[0] || null;
   const out: AthleteFields = {
     full_name: b.full_name !== undefined || !cur ? str(b.full_name, { field: "Full name", required: true, min: 2, max: 80 }) : cur.full_name,
     house_id: b.house_id !== undefined || !cur ? (await getHouse(b.house_id)).id : cur.house_id,
-    level: cur ? cur.level : null,
+    level: primaryLevel,
+    levels,
     gender: cur ? cur.gender : null,
     bib: b.bib !== undefined ? cleanBib(b.bib) : cur ? cur.bib : "",
   };
-  if (b.level !== undefined) out.level = b.level === "" || b.level === null ? null : oneOf(b.level, ATHLETE_LEVELS, "Age group");
   if (b.gender !== undefined) out.gender = b.gender === "" || b.gender === null ? null : oneOf(b.gender, GENDERS, "Gender");
   return out;
 }
@@ -415,9 +430,11 @@ const LV = (v: unknown) => {
   const aliases: Record<string, (typeof ATHLETE_LEVELS)[number]> = {
     lowerjunior: "Lower Junior",
     lowerjuniors: "Lower Junior",
+    "s1&s2": "Lower Junior",
     s1: "Lower Junior",
     s2: "Lower Junior",
     s3: "Junior",
+    "s4&s5": "Intermediate",
     s4: "Intermediate",
     s5: "Intermediate",
     ibdp1: "Senior",
@@ -454,8 +471,15 @@ export async function importAthletes(actor: Actor, rows: unknown) {
       const hv = String(r.house || "").trim().toLowerCase();
       const house = houses.find((h) => h.name.toLowerCase() === hv) || (hv.length === 1 ? houses.find((h) => h.name.charAt(0).toLowerCase() === hv) : null);
       if (!house) throw bad(`unknown house "${r.house}"`);
-      const level = LV(r.level);
-      if (level === undefined) throw bad(`unknown age group "${r.level}"`);
+      const requestedLevels = Array.isArray(r.levels) ? r.levels : String(r.levels ?? r.level ?? "").split(/[;,|]/);
+      const levels: string[] = [];
+      for (const value of requestedLevels) {
+        const label = String(value ?? "").trim();
+        if (!label) continue;
+        const level = LV(label);
+        if (level === undefined || level === null) throw bad(`unknown age group "${label}"`);
+        if (!levels.includes(level)) levels.push(level);
+      }
       const gender = GN(r.gender);
       if (gender === undefined) throw bad(`unknown gender "${r.gender}"`);
       const full_name = str(r.full_name, { field: "Full name", required: true, min: 2, max: 80 });
@@ -470,7 +494,7 @@ export async function importAthletes(actor: Actor, rows: unknown) {
       names.add(nk);
       bibs.push(bib);
       bibSet.add(bib);
-      toInsert.push({ full_name, house_id: house.id, level, gender, bib, created_at: now() });
+      toInsert.push({ full_name, house_id: house.id, level: levels[0] || null, levels, gender, bib, created_at: now() });
     } catch (e) {
       errors.push(`Row ${i + 1}: ${(e as Error).message}`);
     }
@@ -507,7 +531,8 @@ async function selectAll<T>(
   }
 }
 
-const fits = (ev: EventRow, a: AthleteRow) => (ev.level === "Mixed" || a.level === ev.level) && (!ev.gender || a.gender === ev.gender);
+const fits = (ev: EventRow, a: AthleteRow) =>
+  (ev.level === "Mixed" || (a.levels || (a.level ? [a.level] : [])).includes(ev.level)) && (!ev.gender || a.gender === ev.gender);
 
 /** Add athletes to several new events at once (everyone who fits). Relays get one entry per house. */
 async function fillMany(events: EventRow[], actor: Actor) {
@@ -912,7 +937,7 @@ export async function athletesCsv() {
   const hs = new Map((await listHouses()).map((h) => [h.id, h.name]));
   return (
     [csvRow(["Name", "House", "Age group", "Gender", "Bib"])]
-      .concat((await listAthletes()).map((a) => csvRow([a.full_name, hs.get(a.house_id), a.level || "", a.gender || "", a.bib])))
+      .concat((await listAthletes()).map((a) => csvRow([a.full_name, hs.get(a.house_id), (a.levels || []).join("; "), a.gender || "", a.bib])))
       .join("\r\n") + "\r\n"
   );
 }

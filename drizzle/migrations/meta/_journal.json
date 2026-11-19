@@ -36,6 +36,20 @@
       "when": 1795120000000,
       "tag": "0004_official_2026_programme",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795123600000,
+      "tag": "0005_athlete_multiple_divisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795127200000,
+      "tag": "0006_ravens_events",
+      "breakpoints": true
     }
   ]
 }

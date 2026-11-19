@@ -5,19 +5,21 @@ The Lovable-hosted Sports Day app: a public live scoreboard, staff event-operati
 ## First deployment
 
 1. Connect the Lovable project to Lovable Cloud/Supabase and make sure migrations `0000` through `0003` are applied. Apply [`0004_official_2026_programme.sql`](./drizzle/migrations/0004_official_2026_programme.sql) once to back up the old schedule/results and install the official programme. It keeps the athlete roster and staff accounts.
-2. In Lovable’s server-side secrets, set `SPORTSDAY_SETUP_KEY` to a private random value of at least 32 characters. For example, generate one locally with:
+2. Apply [`0005_athlete_multiple_divisions.sql`](./drizzle/migrations/0005_athlete_multiple_divisions.sql) after `0004`. It lets an athlete be assigned to more than one age group and seeds the corresponding individual event entries.
+3. Apply [`0006_ravens_events.sql`](./drizzle/migrations/0006_ravens_events.sql) after `0005`. It adds the Ravens PDF's missing events without changing the existing timed programme; set their times in **Setup → Events**.
+4. In Lovable’s server-side secrets, set `SPORTSDAY_SETUP_KEY` to a private random value of at least 32 characters. For example, generate one locally with:
 
    ```sh
    node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
    ```
 
    Keep this value out of `VITE_` variables, source control, and shared screenshots.
-3. Open `/staff`, choose **First deployment? Set up the admin account**, enter the setup key, and choose the first administrator’s name, username, and password.
-4. After the first admin is created, remove `SPORTSDAY_SETUP_KEY` from the deployment secrets. Admin setup is also blocked while an active admin exists.
+5. Open `/staff`, choose **First deployment? Set up the admin account**, enter the setup key, and choose the first administrator’s name, username, and password.
+6. After the first admin is created, remove `SPORTSDAY_SETUP_KEY` from the deployment secrets. Admin setup is also blocked while an active admin exists.
 
 The migration seeds the default houses and meet settings. Start with the fresh Lovable database; do not copy the source SQLite file.
 
-The official programme uses Lower Junior (S1–S2), Junior (S3), Intermediate (S4–S5), Senior (IBDP 1), and Open (IBDP 2 / Open). Review each athlete's age-group assignment before recording; the migration preserves existing roster assignments and does not guess which current athletes belong to Lower Junior or Open. The 8 × 50m Juniors relay uses eight runners per house.
+The official programme uses Lower Junior (S1–S2), Junior (S3), Intermediate (S4–S5), Senior (IBDP 1), and Open (IBDP 2 / Open). Athletes can be assigned to multiple age groups from **Setup → Athletes**; when importing a roster, separate multiple values in the Age Groups column with semicolons. Event awards are counted in the division of each entered event. The 8 × 50m Juniors relay uses eight runners per house.
 
 ## Local development
 

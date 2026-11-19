@@ -5,7 +5,7 @@ const MAX_ROWS = 2000;
 const HEADER_ALIASES = {
   full_name: ["name", "fullname", "athlete", "athletename"],
   house: ["house", "team"],
-  level: ["age", "agegroup", "level", "division", "yeargroup", "category"],
+  level: ["age", "agegroup", "agegroups", "eligibleagegroups", "level", "division", "divisions", "eligiblelevels", "yeargroup", "category"],
   gender: ["gender", "sex"],
   events: ["event", "events", "eventlist", "optionalevents"],
   bib: ["bib", "bibnumber", "athletenumber", "number"],
@@ -81,7 +81,7 @@ export function parseRosterFile(filename: string, bytes: Uint8Array) {
 
 export function sampleWorkbook(): Uint8Array {
   const workbook = XLSX.utils.book_new();
-  const sheet = XLSX.utils.aoa_to_sheet([["Name", "House", "Age Group", "Gender", "Events"]]);
+  const sheet = XLSX.utils.aoa_to_sheet([["Name", "House", "Age Groups", "Gender", "Events"]]);
   sheet["!cols"] = [{ wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 28 }];
   XLSX.utils.book_append_sheet(workbook, sheet, "Roster");
   return XLSX.write(workbook, { bookType: "xlsx", type: "array" });

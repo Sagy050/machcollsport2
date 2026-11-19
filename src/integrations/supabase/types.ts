@@ -38,6 +38,7 @@ export type Database = {
           house_id: number
           id: number
           level: string | null
+          levels: string[]
         }
         Insert: {
           bib: string
@@ -47,6 +48,7 @@ export type Database = {
           house_id: number
           id?: number
           level?: string | null
+          levels?: string[]
         }
         Update: {
           bib?: string
@@ -56,6 +58,7 @@ export type Database = {
           house_id?: number
           id?: number
           level?: string | null
+          levels?: string[]
         }
         Relationships: [
           {
