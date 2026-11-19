@@ -1120,6 +1120,7 @@ dialog .btn.danger[data-act-out]:hover { background: #fff1f2; }
 .roster-name { color: #0f172a; font: 700 14px "Bricolage Grotesque", system-ui, sans-serif; }
 .roster-bib { color: #334155; font: 800 13px ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 .entry-count { display: inline-flex; padding: 4px 7px; border: 1px solid #e2e8f0; border-radius: 999px; background: #f8fafc; color: #475569; font-size: 13px; font-weight: 650; white-space: nowrap; }
+.entry-events { display: block; max-width: 240px; margin-top: 5px; color: #64748b; font-size: 11px; font-weight: 500; line-height: 1.4; white-space: normal; }
 .roster-actions { display: flex; justify-content: flex-end; gap: 5px; opacity: 0; transition: opacity .12s; }
 .roster-row:hover .roster-actions, .roster-row:focus-within .roster-actions { opacity: 1; }
 .roster-table-wrap .btn.sm { min-height: 29px; padding: 4px 8px; font-size: 13px; }

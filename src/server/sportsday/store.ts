@@ -292,13 +292,33 @@ export async function deleteEvent(actor: Actor, id: number) {
 
 // ---- athletes ------------------------------------------------------------------------------------
 export async function listAthletes() {
-  const [athletes, entries] = await Promise.all([
+  const [athletes, entries, relayMembers, events] = await Promise.all([
     q<AthleteRow[]>(db().from("athletes").select("*").order("bib")),
-    selectAll<{ athlete_id: number | null }>("sd_entries", "athlete_id"),
+    selectAll<{ id: number; athlete_id: number | null; event_id: number }>("sd_entries", "id,athlete_id,event_id"),
+    selectAll<{ athlete_id: number; entry_id: number }>("relay_members", "athlete_id,entry_id"),
+    selectAll<{ id: number; name: string }>("sd_events", "id,name"),
   ]);
-  const counts = new Map<number, number>();
-  for (const e of entries) if (e.athlete_id !== null) counts.set(e.athlete_id, (counts.get(e.athlete_id) || 0) + 1);
-  return athletes.map((a) => ({ ...a, entries: counts.get(a.id) || 0 }));
+  const eventById = new Map(events.map((event) => [event.id, event.name]));
+  const eventByEntryId = new Map(entries.map((entry) => [entry.id, entry.event_id]));
+  const athleteEvents = new Map<number, Set<number>>();
+  const addEvent = (athleteId: number, eventId: number) => {
+    const eventIds = athleteEvents.get(athleteId) || new Set<number>();
+    eventIds.add(eventId);
+    athleteEvents.set(athleteId, eventIds);
+  };
+  for (const entry of entries) if (entry.athlete_id !== null) addEvent(entry.athlete_id, entry.event_id);
+  for (const member of relayMembers) {
+    const eventId = eventByEntryId.get(member.entry_id);
+    if (eventId !== undefined) addEvent(member.athlete_id, eventId);
+  }
+  return athletes.map((athlete) => {
+    const eventIds = athleteEvents.get(athlete.id) || new Set<number>();
+    const eventNames = [...eventIds]
+      .map((id) => eventById.get(id))
+      .filter((name): name is string => name !== undefined)
+      .sort((a, b) => a.localeCompare(b));
+    return { ...athlete, entries: eventIds.size, event_names: eventNames };
+  });
 }
 const getAthlete = (id: number) => q<AthleteRow | null>(db().from("athletes").select("*").eq("id", id).maybeSingle());
 
