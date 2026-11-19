@@ -32,6 +32,7 @@ export type EventRow = {
   gender: string | null;
   kind: string;
   measure: string;
+  relay_legs: number;
   sched_time: string;
   status: string;
   heat_starts: Record<string, number>;
@@ -73,7 +74,7 @@ export type RawData = {
   relaySplits?: RelaySplitRow[];
 };
 
-const LEVELS = ["Junior", "Intermediate", "Senior"];
+const LEVELS = ["Lower Junior", "Junior", "Intermediate", "Senior", "Open"];
 type Tally = { points: number; gold: number; silver: number; bronze: number; events: number };
 const cmpStats = (a: Tally, b: Tally) => b.points - a.points || b.gold - a.gold || b.silver - a.silver || b.bronze - a.bronze;
 const sameStats = (a: Tally, b: Tally) => a.points === b.points && a.gold === b.gold && a.silver === b.silver && a.bronze === b.bronze;
@@ -209,6 +210,7 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
         gender: ev.gender,
         kind: ev.kind,
         measure: ev.measure,
+        relayLegs: ev.relay_legs || 4,
         time: ev.sched_time,
         status: ev.status,
         entries: list.map(shape),

@@ -28,11 +28,16 @@ type Body = Any;
 const db = () => supabaseAdmin as unknown as SupabaseClient;
 const now = () => Date.now();
 
-export const LEVELS = ["Junior", "Intermediate", "Senior", "Mixed"] as const;
-const ATHLETE_LEVELS = ["Junior", "Intermediate", "Senior"] as const;
+export const LEVELS = ["Lower Junior", "Junior", "Intermediate", "Senior", "Open", "Mixed"] as const;
+const ATHLETE_LEVELS = ["Lower Junior", "Junior", "Intermediate", "Senior", "Open"] as const;
 const GENDERS = ["F", "M"] as const;
 const KINDS = ["individual", "relay"] as const;
 const MEASURES = ["time", "distance"] as const;
+const relayLegCount = (value: unknown) => {
+  const count = int(value, { field: "Relay legs", min: 4, max: 8 });
+  if (count !== 4 && count !== 8) throw bad("Relay legs must be 4 or 8");
+  return count;
+};
 const DEFAULT_SETTINGS: Settings = {
   title: "Inter-House Sports Day 2026",
   date: "2026-11-20",
@@ -179,9 +184,10 @@ const assertEditable = (actor: Actor, ev: EventRow) => {
   if (ev.status === "final" && actor?.role !== "admin") throw new HttpError(423, "This event is finalised. Ask an admin to reopen it");
 };
 
-type EventFields = { name: string; level: string; gender: string | null; kind: string; measure: string; sched_time: string };
+type EventFields = { name: string; level: string; gender: string | null; kind: string; measure: string; sched_time: string; relay_legs: number };
 function cleanEvent(b: Body, cur: EventRow | null): EventFields {
   const kind = b.kind !== undefined || !cur ? oneOf(b.kind || "individual", KINDS, "Kind") : cur.kind;
+  const defaultRelayLegs = /8\s*[x×]\s*50/i.test(String(b.name ?? cur?.name ?? "")) ? 8 : 4;
   const f: EventFields = {
     name: b.name !== undefined || !cur ? str(b.name, { field: "Event name", required: true, max: 80 }) : cur.name,
     level: b.level !== undefined || !cur ? oneOf(b.level, LEVELS, "Level") : cur.level,
@@ -189,6 +195,9 @@ function cleanEvent(b: Body, cur: EventRow | null): EventFields {
     kind,
     measure: kind === "relay" ? "time" : b.measure !== undefined || !cur ? oneOf(b.measure || "time", MEASURES, "Measure") : cur.measure,
     sched_time: cur ? cur.sched_time : "",
+    relay_legs: kind === "relay"
+      ? relayLegCount(b.relay_legs !== undefined ? b.relay_legs : cur?.relay_legs || defaultRelayLegs)
+      : 0,
   };
   if (b.gender !== undefined) f.gender = b.gender === "" || b.gender === null ? null : oneOf(b.gender, GENDERS, "Gender");
   if (b.sched_time !== undefined) {
@@ -236,8 +245,11 @@ export async function bulkEvents(actor: Actor, b: Body) {
     const name = str(it.name, { field: "Event name", required: true, max: 80 });
     const kind = oneOf(it.kind || "individual", KINDS, "Kind");
     const measure = kind === "relay" ? "time" : oneOf(it.measure || "time", MEASURES, "Measure");
-    if (kind === "relay") plan.push({ name, level: "Mixed", gender: null, kind, measure, sched_time: "" });
-    else for (const level of levels) for (const g of genders.length ? genders : [null]) plan.push({ name, level, gender: g, kind, measure, sched_time: "" });
+    const relayLegs = kind === "relay"
+      ? relayLegCount(it.relay_legs !== undefined ? it.relay_legs : /8\s*[x×]\s*50/i.test(name) ? 8 : 4)
+      : 0;
+    if (kind === "relay") plan.push({ name, level: "Mixed", gender: null, kind, measure, sched_time: "", relay_legs: relayLegs });
+    else for (const level of levels) for (const g of genders.length ? genders : [null]) plan.push({ name, level, gender: g, kind, measure, sched_time: "", relay_legs: 0 });
   }
   if (plan.length > 200) throw bad("That would create more than 200 events. Choose fewer.");
   const existing = await q<EventRow[]>(db().from("sd_events").select("name,level,gender,kind"));
@@ -399,7 +411,23 @@ export async function clearRoster(actor: Actor) {
 
 const LV = (v: unknown) => {
   const s = String(v || "").trim().toLowerCase();
-  return !s ? null : ATHLETE_LEVELS.find((l) => l.toLowerCase() === s || (s.length === 1 && l.charAt(0).toLowerCase() === s)) || undefined;
+  const compact = s.replace(/[\s_-]+/g, "");
+  const aliases: Record<string, (typeof ATHLETE_LEVELS)[number]> = {
+    lowerjunior: "Lower Junior",
+    lowerjuniors: "Lower Junior",
+    s1: "Lower Junior",
+    s2: "Lower Junior",
+    s3: "Junior",
+    s4: "Intermediate",
+    s5: "Intermediate",
+    ibdp1: "Senior",
+    ibdp2: "Open",
+    all: "Open",
+    open: "Open",
+  };
+  return !s
+    ? null
+    : aliases[compact] || ATHLETE_LEVELS.find((l) => l.toLowerCase() === s || (s.length === 1 && l.charAt(0).toLowerCase() === s));
 };
 const GN = (v: unknown) => {
   const s = String(v || "").trim().toLowerCase();
@@ -525,8 +553,8 @@ async function configureRelayTeams(ev: EventRow, athletes: AthleteRow[]) {
     const runners = athletes
       .filter((athlete) => athlete.house_id === team.house_id && fits(ev, athlete))
       .sort((a, b) => a.bib.localeCompare(b.bib, undefined, { numeric: true }))
-      .slice(0, 4);
-    if (runners.length === 4) {
+      .slice(0, ev.relay_legs || 4);
+    if (runners.length === (ev.relay_legs || 4)) {
       runners.forEach((runner, index) => rows.push({ entry_id: team.id, leg: index + 1, athlete_id: runner.id }));
     }
   }
@@ -581,7 +609,7 @@ export async function addEntries(actor: Actor, eventId: number, b: Body) {
         ["entry_id", "leg"],
       )
     : [];
-  const configured = new Set(members.filter((member) => member.leg === 4).map((member) => member.entry_id)).size;
+  const configured = new Set(members.filter((member) => member.leg === (ev.relay_legs || 4)).map((member) => member.entry_id)).size;
   return { added, total, configured };
 }
 
@@ -597,12 +625,13 @@ export async function removeEntry(actor: Actor, id: number) {
 
 export async function setRelayLineup(actor: Actor, eventId: number, houseId: unknown, athleteIds: unknown) {
   const hId = int(houseId, { field: "House" });
-  if (!Array.isArray(athleteIds) || athleteIds.length !== 4) throw bad("Choose exactly four runners for the relay");
-  const ids = athleteIds.map((athleteId) => int(athleteId, { field: "Athlete" }));
-  if (new Set(ids).size !== 4) throw bad("Each runner must be different");
   const ev = await mustEvent(eventId);
   assertEditable(actor, ev);
   if (ev.kind !== "relay") throw bad("This event is not a relay");
+  const legs = ev.relay_legs || 4;
+  if (!Array.isArray(athleteIds) || athleteIds.length !== legs) throw bad(`Choose exactly ${legs} runners for the relay`);
+  const ids = athleteIds.map((athleteId) => int(athleteId, { field: "Athlete" }));
+  if (new Set(ids).size !== legs) throw bad("Each runner must be different");
   const team = await q<EntryRow | null>(
     db()
       .from("sd_entries")
@@ -616,7 +645,7 @@ export async function setRelayLineup(actor: Actor, eventId: number, houseId: unk
   const current = await q<{ leg: number; athlete_id: number }[]>(
     db().from("relay_members").select("leg,athlete_id").eq("entry_id", team.id).order("leg"),
   );
-  if (current.length === 4 && current.every((member, index) => member.leg === index + 1 && member.athlete_id === ids[index])) {
+  if (current.length === legs && current.every((member, index) => member.leg === index + 1 && member.athlete_id === ids[index])) {
     return { entry_id: team.id, athlete_ids: ids };
   }
   if (team.perf_value !== null || team.status !== "ok") {
@@ -627,9 +656,9 @@ export async function setRelayLineup(actor: Actor, eventId: number, houseId: unk
   );
   if (splits.length) throw new HttpError(409, "Clear this team’s relay result before changing its runners");
   const athletes = await q<AthleteRow[]>(db().from("athletes").select("*").in("id", ids));
-  if (athletes.length !== 4) throw bad("One or more selected athletes no longer exist");
-  if (athletes.some((athlete) => athlete.house_id !== hId)) throw bad("All four runners must belong to the selected house");
-  if (athletes.some((athlete) => !fits(ev, athlete))) throw bad("All four runners must match this relay’s age group and gender");
+  if (athletes.length !== legs) throw bad("One or more selected athletes no longer exist");
+  if (athletes.some((athlete) => athlete.house_id !== hId)) throw bad(`All ${legs} runners must belong to the selected house`);
+  if (athletes.some((athlete) => !fits(ev, athlete))) throw bad(`All ${legs} runners must match this relay’s age group and gender`);
   await q(
     db().rpc("sd_set_relay_lineup", {
       _entry: team.id,
@@ -694,10 +723,10 @@ export async function recordTime(actor: Actor, id: number, ms: unknown) {
 }
 
 export async function recordRelaySplit(actor: Actor, id: number, leg: unknown, elapsedMs: unknown) {
-  const n = int(leg, { field: "Leg", min: 1, max: 4 });
-  const elapsed = int(elapsedMs, { field: "Elapsed time", min: 1, max: 86400000 });
   const { cur, ev } = await entryAndEvent(actor, id);
   if (ev.kind !== "relay") throw bad("This event is not a relay");
+  const n = int(leg, { field: "Leg", min: 1, max: ev.relay_legs || 4 });
+  const elapsed = int(elapsedMs, { field: "Elapsed time", min: 1, max: 86400000 });
   const t = now();
   const split = await q<{ leg: number; cumulative_ms: number; split_ms: number }>(
     db().rpc("sd_record_relay_split", {

@@ -132,7 +132,7 @@
     var evs = state.events, nextId = (evs.filter(function (e) { return e.status === 'scheduled'; })[0] || {}).id;
     var sets = [['all', 'All'], ['live', 'Live'], ['upcoming', 'Upcoming'], ['done', 'Finished']];
     $('fstatus').innerHTML = sets.map(function (x) { return '<button type="button" data-s="' + x[0] + '" aria-pressed="' + (fStatus === x[0]) + '">' + x[1] + '</button>'; }).join('');
-    var levels = ['all'].concat(['Junior', 'Intermediate', 'Senior', 'Mixed'].filter(function (l) { return evs.some(function (e) { return e.level === l; }); }));
+    var levels = ['all'].concat(['Lower Junior', 'Junior', 'Intermediate', 'Senior', 'Open', 'Mixed'].filter(function (l) { return evs.some(function (e) { return e.level === l; }); }));
     $('flevel').innerHTML = levels.map(function (l) { return '<button type="button" data-l="' + l + '" aria-pressed="' + (fLevel === l) + '">' + (l === 'all' ? 'All levels' : l) + '</button>'; }).join('');
     var shown = evs.filter(function (e) {
       var d = e.status === 'completed' || e.status === 'final';
