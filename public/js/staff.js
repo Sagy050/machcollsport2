@@ -600,12 +600,17 @@
       var house = ST.houses.filter(function (h) { return normalizedText(h.name) === houseName || (houseName.length === 1 && normalizedText(h.name.charAt(0)) === houseName); })[0];
       var athlete = house && ATH.filter(function (a) { return a.house_id === house.id && normalizedText(a.full_name) === normalizedText(row.full_name); })[0];
       if (!athlete) { failures.push('Row ' + (index + 1) + ': could not match this athlete to the imported roster'); return; }
-      requested.forEach(function (name) {
+      requested.forEach(function (request) {
+        var separator = request.indexOf(':');
+        var requestedLevel = separator > 0 ? request.slice(0, separator).trim() : '';
+        var name = separator > 0 ? request.slice(separator + 1).trim() : request;
+        if (LEVELS.indexOf(requestedLevel) < 0) { requestedLevel = ''; name = request; }
         var matches = ST.events.filter(function (ev) {
           return ev.status === 'scheduled' && normalizedText(ev.name) === normalizedText(name) &&
+            (!requestedLevel || ev.level === requestedLevel) &&
             athleteFits(athlete, ev);
         });
-        if (!matches.length) { failures.push(row.full_name + ': no scheduled eligible event named "' + name + '"'); return; }
+        if (!matches.length) { failures.push(row.full_name + ': no scheduled eligible event named "' + request + '"'); return; }
         matches.forEach(function (ev) {
           if (ev.kind === 'relay') { failures.push(row.full_name + ': relay entries are seeded by team, not individual'); return; }
           groups[ev.id] = groups[ev.id] || { name: ev.name, ids: [] };

@@ -50,6 +50,13 @@
       "when": 1795127200000,
       "tag": "0006_ravens_events",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795128960000,
+      "tag": "0007_lower_junior_events",
+      "breakpoints": true
     }
   ]
 }
