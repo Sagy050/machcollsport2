@@ -57,6 +57,13 @@
       "when": 1795128960000,
       "tag": "0007_lower_junior_events",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795128961000,
+      "tag": "0008_falcons_long_jump_divisions",
+      "breakpoints": true
     }
   ]
 }
