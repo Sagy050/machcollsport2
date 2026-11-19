@@ -8,6 +8,7 @@ const HEADER_ALIASES = {
   level: ["age", "agegroup", "agegroups", "eligibleagegroups", "level", "division", "divisions", "eligiblelevels", "yeargroup", "category"],
   gender: ["gender", "sex"],
   events: ["event", "events", "eventlist", "optionalevents"],
+  relay_teams: ["relayteam", "relayteams", "relaylineup", "relaylineups"],
   bib: ["bib", "bibnumber", "athletenumber", "number"],
 };
 
@@ -49,6 +50,7 @@ export function parseRosterFile(filename: string, bytes: Uint8Array) {
     level: 2,
     gender: 3,
     events: 4,
+    relay_teams: -1,
     bib: 5,
   };
   if (hasHeader) {
@@ -72,6 +74,7 @@ export function parseRosterFile(filename: string, bytes: Uint8Array) {
       level: valueAt("level"),
       gender: valueAt("gender"),
       events: valueAt("events"),
+      relay_teams: valueAt("relay_teams"),
       bib: valueAt("bib"),
     };
   });
@@ -81,8 +84,8 @@ export function parseRosterFile(filename: string, bytes: Uint8Array) {
 
 export function sampleWorkbook(): Uint8Array {
   const workbook = XLSX.utils.book_new();
-  const sheet = XLSX.utils.aoa_to_sheet([["Name", "House", "Age Groups", "Gender", "Events"]]);
-  sheet["!cols"] = [{ wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 28 }];
+  const sheet = XLSX.utils.aoa_to_sheet([["Name", "House", "Age Groups", "Gender", "Events", "Relay Teams"]]);
+  sheet["!cols"] = [{ wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 28 }, { wch: 42 }];
   XLSX.utils.book_append_sheet(workbook, sheet, "Roster");
   return XLSX.write(workbook, { bookType: "xlsx", type: "array" });
 }

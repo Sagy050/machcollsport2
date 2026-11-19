@@ -22,6 +22,8 @@ The migration seeds the default houses and meet settings. Start with the fresh L
 
 The official programme uses Lower Junior (S1–S2), Junior (S3), Intermediate (S4–S5), Senior (IBDP 1), and Open (IBDP 2 / Open). Athletes can be assigned to multiple age groups from **Setup → Athletes**; when importing a roster, separate multiple values in the Age Groups column with semicolons. In the Events column, use `Junior: Long Jump` to target a specific division when an event name appears in more than one division. Event awards are counted in the division of each entered event. The 8 × 50m Juniors relay uses eight runners per house.
 
+Roster imports can include relay lineups in the optional **Relay Teams** column, so athletes, individual event requests, and relay legs can be uploaded together in one CSV or workbook. Each assignment uses `Age Group | Gender | Event | Leg`, for example `Junior | F | 4 x 100m Relay | 1`; separate multiple assignments with semicolons. Include every leg for a team, using each athlete once. Keep relay assignments out of the **Events** column.
+
 ## Local development
 
 Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_PUBLISHABLE_KEY` for the server, plus `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for browser Realtime. First-admin setup also requires a private `SPORTSDAY_SETUP_KEY` of at least 32 characters. Keep these secrets out of source control.

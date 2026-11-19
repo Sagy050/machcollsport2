@@ -550,8 +550,8 @@
 
   /* --- 1. athletes --- */
   function athletesSetup() {
-    var fileDetails = PENDING_ROSTER ? '<div class="file-preview"><div><b>' + esc(PENDING_FILE) + '</b><small>' + PENDING_ROSTER.length + ' athlete rows detected · ' + PENDING_ROSTER.filter(function (row) { return row.events; }).length + ' with event requests</small></div><div class="file-preview-actions"><button class="btn sm" data-act="cancelimport">Remove file</button><button class="btn primary sm" data-act="import"' + (IMPORTING_ROSTER ? ' disabled' : '') + '>' + (IMPORTING_ROSTER ? 'Importing…' : 'Import ' + PENDING_ROSTER.length + ' athletes') + '</button></div><ul>' + PENDING_ROSTER.slice(0, 4).map(function (row) { return '<li>' + esc(row.full_name || 'Name missing') + ' · ' + esc(row.house || 'House missing') + ' · ' + esc(row.level || 'Age group missing') + '</li>'; }).join('') + (PENDING_ROSTER.length > 4 ? '<li>and ' + (PENDING_ROSTER.length - 4) + ' more…</li>' : '') + '</ul></div>' : '';
-    var upload = '<section class="roster-upload card"><div class="dropzone-wrap"><label class="dropzone" id="roster-dropzone" for="csvfile" tabindex="0"><span class="upload-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v4h14v-4"></path></svg></span><span class="upload-title"><b>' + (PARSING_ROSTER ? 'Reading your roster…' : 'Drop your roster here or browse files') + '</b><small>Excel workbook or delimited text · up to 8 MB</small></span><span class="file-types">XLSX <i>·</i> XLS <i>·</i> CSV <i>·</i> TXT</span><input type="file" id="csvfile" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" aria-label="Choose an Excel or CSV roster"' + (PARSING_ROSTER ? ' disabled' : '') + '></label><div class="column-hint"><b>Columns we recognize</b><span>Name</span><span>House</span><span>Age Groups</span><span>Gender</span><span>Events <small>optional</small></span></div></div><div class="roster-upload-copy"><p class="eyebrow">ROSTER INTAKE</p><h2>Bring your team in.</h2><p>We read the first worksheet, match column headings, and prepare category-ready athletes. An athlete can belong to multiple age groups; separate them with semicolons.</p><a class="template-link" href="/api/athletes/template.xlsx">Download sample Excel template <span aria-hidden="true">↓</span></a><small>Events can contain names such as <b>100m, Long jump</b>. Bibs are generated automatically if omitted.</small></div></section>' + fileDetails;
+    var fileDetails = PENDING_ROSTER ? '<div class="file-preview"><div><b>' + esc(PENDING_FILE) + '</b><small>' + PENDING_ROSTER.length + ' athlete rows detected · ' + PENDING_ROSTER.filter(function (row) { return row.events; }).length + ' with event requests · ' + PENDING_ROSTER.filter(function (row) { return row.relay_teams; }).length + ' relay runners</small></div><div class="file-preview-actions"><button class="btn sm" data-act="cancelimport">Remove file</button><button class="btn primary sm" data-act="import"' + (IMPORTING_ROSTER ? ' disabled' : '') + '>' + (IMPORTING_ROSTER ? 'Importing…' : 'Import ' + PENDING_ROSTER.length + ' athletes') + '</button></div><ul>' + PENDING_ROSTER.slice(0, 4).map(function (row) { return '<li>' + esc(row.full_name || 'Name missing') + ' · ' + esc(row.house || 'House missing') + ' · ' + esc(row.level || 'Age group missing') + '</li>'; }).join('') + (PENDING_ROSTER.length > 4 ? '<li>and ' + (PENDING_ROSTER.length - 4) + ' more…</li>' : '') + '</ul></div>' : '';
+    var upload = '<section class="roster-upload card"><div class="dropzone-wrap"><label class="dropzone" id="roster-dropzone" for="csvfile" tabindex="0"><span class="upload-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v4h14v-4"></path></svg></span><span class="upload-title"><b>' + (PARSING_ROSTER ? 'Reading your roster…' : 'Drop your roster here or browse files') + '</b><small>Excel workbook or delimited text · up to 8 MB</small></span><span class="file-types">XLSX <i>·</i> XLS <i>·</i> CSV <i>·</i> TXT</span><input type="file" id="csvfile" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" aria-label="Choose an Excel or CSV roster"' + (PARSING_ROSTER ? ' disabled' : '') + '></label><div class="column-hint"><b>Columns we recognize</b><span>Name</span><span>House</span><span>Age Groups</span><span>Gender</span><span>Events <small>optional</small></span><span>Relay Teams <small>optional</small></span></div></div><div class="roster-upload-copy"><p class="eyebrow">ROSTER INTAKE</p><h2>Bring your team in.</h2><p>We read the first worksheet, match column headings, and prepare category-ready athletes. An athlete can belong to multiple age groups; separate them with semicolons.</p><a class="template-link" href="/api/athletes/template.xlsx">Download sample Excel template <span aria-hidden="true">↓</span></a><small>For relay lineups, use <b>Age Group | Gender | Event | Leg</b> in Relay Teams, e.g. <b>Junior | F | 4 x 100m Relay | 1</b>. Separate multiple assignments with semicolons.</small></div></section>' + fileDetails;
     if (!ATH) return upload + '<div class="empty">Loading the roster…</div>';
 
     var scheduled = ST.events.filter(function (ev) { return ev.status === 'scheduled'; }).length;
@@ -592,10 +592,11 @@
   }
   function normalizedText(value) { return String(value || '').trim().toLowerCase().replace(/\s+/g, ' '); }
   function seedNamedEvents(rows) {
-    var groups = {}, failures = [];
+    var groups = {}, relayGroups = {}, failures = [];
     rows.forEach(function (row, index) {
       var requested = String(row.events || '').split(/[,;|\n]/).map(function (name) { return name.trim(); }).filter(Boolean);
-      if (!requested.length) return;
+      var relayRequests = String(row.relay_teams || '').split(/[;\n]/).map(function (name) { return name.trim(); }).filter(Boolean);
+      if (!requested.length && !relayRequests.length) return;
       var houseName = normalizedText(row.house);
       var house = ST.houses.filter(function (h) { return normalizedText(h.name) === houseName || (houseName.length === 1 && normalizedText(h.name.charAt(0)) === houseName); })[0];
       var athlete = house && ATH.filter(function (a) { return a.house_id === house.id && normalizedText(a.full_name) === normalizedText(row.full_name); })[0];
@@ -612,22 +613,75 @@
         });
         if (!matches.length) { failures.push(row.full_name + ': no scheduled eligible event named "' + request + '"'); return; }
         matches.forEach(function (ev) {
-          if (ev.kind === 'relay') { failures.push(row.full_name + ': relay entries are seeded by team, not individual'); return; }
+          if (ev.kind === 'relay') { failures.push(row.full_name + ': put relay assignments in the Relay Teams column'); return; }
           groups[ev.id] = groups[ev.id] || { name: ev.name, ids: [] };
           if (groups[ev.id].ids.indexOf(athlete.id) < 0) groups[ev.id].ids.push(athlete.id);
         });
       });
+      relayRequests.forEach(function (request) {
+        var parts = request.split('|').map(function (part) { return part.trim(); });
+        if (parts.length !== 4 || LEVELS.indexOf(parts[0]) < 0 || ['F', 'M'].indexOf(parts[1].toUpperCase()) < 0 || !/^\d+$/.test(parts[3])) {
+          failures.push(row.full_name + ': invalid relay assignment "' + request + '" (use Age Group | Gender | Event | Leg)');
+          return;
+        }
+        var level = parts[0], gender = parts[1].toUpperCase(), name = parts[2], leg = Number(parts[3]);
+        var matches = ST.events.filter(function (ev) {
+          return ev.status === 'scheduled' && ev.kind === 'relay' && ev.level === level && ev.gender === gender &&
+            normalizedText(ev.name) === normalizedText(name) && athleteFits(athlete, ev);
+        });
+        if (matches.length !== 1) { failures.push(row.full_name + ': no scheduled eligible relay matches "' + request + '"'); return; }
+        var ev = matches[0], relayLegs = ev.relayLegs || 4;
+        if (leg < 1 || leg > relayLegs) { failures.push(row.full_name + ': relay leg must be between 1 and ' + relayLegs); return; }
+        var key = ev.id + ':' + house.id;
+        relayGroups[key] = relayGroups[key] || { event_id: ev.id, event_name: ev.name, house_id: house.id, house_name: house.name, legs: {} };
+        var group = relayGroups[key];
+        if (group.legs[leg] && group.legs[leg] !== athlete.id) { failures.push(row.full_name + ': relay leg ' + leg + ' is already assigned for ' + ev.name); return; }
+        var duplicateLeg = Object.keys(group.legs).filter(function (assignedLeg) {
+          return group.legs[assignedLeg] === athlete.id && Number(assignedLeg) !== leg;
+        })[0];
+        if (duplicateLeg) { failures.push(row.full_name + ': cannot run relay legs ' + duplicateLeg + ' and ' + leg); return; }
+        group.legs[leg] = athlete.id;
+      });
     });
     var eventIds = Object.keys(groups);
-    var addedEntries = 0, eventsSeeded = 0, chain = Promise.resolve();
+    var relayEvents = {};
+    Object.keys(relayGroups).forEach(function (key) {
+      var group = relayGroups[key], event = ST.events.filter(function (ev) { return ev.id === group.event_id; })[0];
+      var relayLegs = event.relayLegs || 4, athleteIds = [];
+      for (var leg = 1; leg <= relayLegs; leg++) {
+        if (!group.legs[leg]) { failures.push(group.house_name + ' ' + group.event_name + ': missing relay leg ' + leg); return; }
+        athleteIds.push(group.legs[leg]);
+      }
+      group.athlete_ids = athleteIds;
+      relayEvents[group.event_id] = relayEvents[group.event_id] || [];
+      relayEvents[group.event_id].push(group);
+    });
+    var seededEvents = {}, addedEntries = 0, chain = Promise.resolve();
     eventIds.forEach(function (id) {
       chain = chain.then(function () {
         return api('POST', '/api/events/' + id + '/entries', { athlete_ids: groups[id].ids }).then(function (result) {
-          addedEntries += result.added; if (result.added) eventsSeeded++;
+          addedEntries += result.added; if (result.added) seededEvents[id] = true;
         }).catch(function (error) { failures.push(groups[id].name + ': ' + error.message); });
       });
     });
-    return chain.then(function () { return { entries: addedEntries, events: eventsSeeded, failures: failures }; });
+    Object.keys(relayEvents).forEach(function (id) {
+      chain = chain.then(function () {
+        return api('POST', '/api/events/' + id + '/entries', { all: true }).then(function (result) {
+          addedEntries += result.added;
+          if (result.added) seededEvents[id] = true;
+          var lineupChain = Promise.resolve();
+          relayEvents[id].forEach(function (group) {
+            lineupChain = lineupChain.then(function () {
+              return api('POST', '/api/events/' + id + '/relay-lineup', { house_id: group.house_id, athlete_ids: group.athlete_ids })
+                .then(function () { seededEvents[id] = true; })
+                .catch(function (error) { failures.push(group.house_name + ' ' + group.event_name + ': ' + error.message); });
+            });
+          });
+          return lineupChain;
+        }).catch(function (error) { failures.push(relayEvents[id][0].event_name + ': ' + error.message); });
+      });
+    });
+    return chain.then(function () { return { entries: addedEntries, events: Object.keys(seededEvents).length, failures: failures }; });
   }
   function importAthletes() {
     if (!PENDING_ROSTER || !PENDING_ROSTER.length) return toast('Choose a roster file first', 'e');
