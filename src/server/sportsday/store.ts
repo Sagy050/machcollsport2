@@ -295,7 +295,12 @@ export async function listAthletes() {
   const [athletes, entries, relayMembers, events] = await Promise.all([
     q<AthleteRow[]>(db().from("athletes").select("*").order("bib")),
     selectAll<{ id: number; athlete_id: number | null; event_id: number }>("sd_entries", "id,athlete_id,event_id"),
-    selectAll<{ athlete_id: number; entry_id: number }>("relay_members", "athlete_id,entry_id"),
+    selectAll<{ athlete_id: number; entry_id: number; leg: number }>(
+      "relay_members",
+      "athlete_id,entry_id,leg",
+      undefined,
+      ["entry_id", "leg"],
+    ),
     selectAll<{ id: number; name: string }>("sd_events", "id,name"),
   ]);
   const eventById = new Map(events.map((event) => [event.id, event.name]));
