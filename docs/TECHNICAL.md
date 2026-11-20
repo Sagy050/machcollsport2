@@ -12,9 +12,11 @@ The separate `sportsday-v2` app uses Express and SQLite. Its database and deploy
 - **Events and entries:** individual events may be timed or measured by distance; relay events create one team entry per house. Relay lineups use four eligible athletes, and each baton handoff records a cumulative split.
 - **Results:** positions and points are calculated from the recorded performance. Tied performances share a position. Relay points go to the house, not an individual.
 - **Roster intake:** administrators can import CSV/TXT/XLS/XLSX rosters, download a sample workbook, and clear the roster after results are cleared. Clearing the roster saves a database backup.
+- **Athlete photos:** admins can record consent and upload a compressed JPEG only when permission is granted. Photos are kept in private storage and signed into public results only for consenting athletes.
+- **Marketplace ads:** `/ads` lists active club ads; only admins can create, edit, publish, hide, or delete ads through the staff setup area.
 - **Live recording:** recorder actions require a staff session. Staff state and public results are read through the server API; database changes update `live_version`, which the browser listens to through Supabase Realtime.
 
-The database schema and incremental changes live in `drizzle/migrations/`. Migration `0003_relay_and_admin_setup.sql` adds relay lineup/split storage, heat-end data, and the one-time administrator setup claim. Apply it to the Lovable database before deploying code that uses those features.
+The database schema and incremental changes live in `drizzle/migrations/`. Migration `0003_relay_and_admin_setup.sql` adds relay lineup/split storage, heat-end data, and the one-time administrator setup claim. Migration `0009_ads_and_athlete_photos.sql` adds the Ads table, athlete consent/photo metadata, and private image buckets; apply it before deploying these features.
 
 ## Roles
 
@@ -23,6 +25,7 @@ The database schema and incremental changes live in `drizzle/migrations/`. Migra
 | View scoreboard, events, and report | yes | yes | yes |
 | Start clocks and record results | no | yes | yes |
 | Manage athletes, events, relay lineups, and heats | no | no | yes |
+| Manage ads and athlete photo consent | no | no | yes |
 | Manage staff accounts, scoring, settings, backups, and resets | no | no | yes |
 
 Roles are checked in the API, not only hidden in the interface.
@@ -45,9 +48,10 @@ Do not expose the setup key through a `VITE_` variable. Remove it from deploymen
 ## API overview
 
 - **Public:** `GET /api/state`, `/api/results.csv`, `/api/time`.
+- **Marketplace:** `GET /api/ads` returns active ads only.
 - **Sign-in and first setup:** `GET /api/me`, `POST /api/login`, `/api/logout`, `/api/me/password`, `GET /api/bootstrap/status`, `POST /api/bootstrap`.
 - **Recording:** `GET /api/staff/state`; event start/reset/complete/reopen; entry time/relay split/undo/mark/clear/status; heat assignment.
-- **Admin setup:** event and entry management, relay lineups, roster import/export/template/clear, staff users, settings, finalisation, audit, backup, and reset.
+- **Admin setup:** event and entry management, relay lineups, athlete event assignments and photo consent, roster import/export/template/clear, ad management, staff users, settings, finalisation, audit, backup, and reset.
 
 ## Local development and deployment
 

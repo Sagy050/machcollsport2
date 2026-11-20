@@ -101,7 +101,8 @@
     // feed
     $('feed').innerHTML = s.recent.length ? s.recent.slice(0, 7).map(function (r) {
       var h = houseOf(r.house_id);
-      return '<li><span class="dot" style="background:' + esc(houseColor(h)) + '"></span><span><b>' + esc(r.name) + '</b> (' + esc(h.name) + ') ' + ord(r.position) + ' in ' + esc(r.level) + ' ' + esc(r.event) + (r.performance ? ' · ' + esc(r.performance) : '') + '</span></li>';
+      var photo = r.photoUrl ? '<img class="result-athlete-photo" src="' + esc(r.photoUrl) + '" alt="" loading="lazy">' : '';
+      return '<li>' + photo + '<span class="dot" style="background:' + esc(houseColor(h)) + '"></span><span><b>' + esc(r.name) + '</b> (' + esc(h.name) + ') ' + ord(r.position) + ' in ' + esc(r.level) + ' ' + esc(r.event) + (r.performance ? ' · ' + esc(r.performance) : '') + '</span></li>';
     }).join('') : '<li class="empty">No results yet.</li>';
 
     renderEvents(); renderAwards();
@@ -142,7 +143,8 @@
       var rows = e.entries.length ? '<table><tr><th>Pos</th><th>' + (e.kind === 'relay' ? 'Team' : 'Athlete') + '</th><th>House</th><th>' + (e.measure === 'time' ? 'Time' : e.measure === 'distance' ? 'Distance' : e.measure === 'score' ? 'Score' : 'Result') + '</th><th>Pts</th></tr>' +
         e.entries.map(function (r) {
           var h = houseOf(r.house_id);
-          return '<tr><td class="pos">' + (r.status !== 'ok' ? r.status.toUpperCase() : r.position === null ? '–' : r.position) + '</td><td>' + esc(r.name) + relayDetails(r) + '</td><td><i class="hd" style="background:' + esc(houseColor(h)) + '"></i>' + esc(h.name) + '</td><td>' + esc(r.performance) + '</td><td>' + r.points + '</td></tr>';
+          var photo = r.photoUrl ? '<img class="result-athlete-photo" src="' + esc(r.photoUrl) + '" alt="" loading="lazy">' : '';
+          return '<tr><td class="pos">' + (r.status !== 'ok' ? r.status.toUpperCase() : r.position === null ? '–' : r.position) + '</td><td>' + photo + esc(r.name) + relayDetails(r) + '</td><td><i class="hd" style="background:' + esc(houseColor(h)) + '"></i>' + esc(h.name) + '</td><td>' + esc(r.performance) + '</td><td>' + r.points + '</td></tr>';
         }).join('') + '</table>' : '<div class="empty">No results recorded yet.</div>';
       var isOpen = !!open[e.id];
       return '<div class="evwrap' + (isOpen ? ' open' : '') + '"><button type="button" class="ev" data-e="' + e.id + '" aria-expanded="' + isOpen + '"><span class="tm">' + esc(e.time || '—') + '</span><span class="en">' + esc(e.name) + '<small>' + esc(e.level) + (e.kind === 'relay' ? ' · Relay' : '') + '</small></span><span>' + pill(e, nextId) + '<span class="chev" aria-hidden="true">›</span></span></button><div class="evres">' + rows + '</div></div>';
@@ -158,7 +160,8 @@
 
   function awardCard(a, label, sub) {
     var h = houseOf(a.house_id);
-    return '<div class="panel award" style="border-top:4px solid ' + esc(houseColor(h)) + '"><h3>' + esc(a.name) + '</h3><p>' + esc(h.name) + ' · ' + esc(sub) + (a.joint ? ' · joint' : '') + '</p><div class="pts" style="margin-top:8px">' + a.points + ' pts</div>' +
+    var photo = a.photoUrl ? '<img class="award-athlete-photo" src="' + esc(a.photoUrl) + '" alt="Photo of ' + esc(a.name) + '" loading="lazy">' : '';
+    return '<div class="panel award" style="border-top:4px solid ' + esc(houseColor(h)) + '">' + photo + '<h3>' + esc(a.name) + '</h3><p>' + esc(h.name) + ' · ' + esc(sub) + (a.joint ? ' · joint' : '') + '</p><div class="pts" style="margin-top:8px">' + a.points + ' pts</div>' +
       '<div class="stat"><span><b>' + a.gold + '</b><small>gold</small></span><span><b>' + a.silver + '</b><small>silver</small></span><span><b>' + a.bronze + '</b><small>bronze</small></span></div></div>';
   }
   function renderAwards() {

@@ -9,7 +9,7 @@
   var ord = function (n) { var v = n % 100; return n + (['th', 'st', 'nd', 'rd'][(v - 20) % 10] || ['th', 'st', 'nd', 'rd'][v] || 'th'); };
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
 
-  var ME = null, ST = null, ATH = null, USERS = null, AUDIT = null, skew = 0;
+  var ME = null, ST = null, ATH = null, USERS = null, AUDIT = null, ADS = null, skew = 0;
   var UI = { filter: 'live', q: '', heat: {}, last: {}, ahouse: 'all', aq: '', qacat: 'track' };
   var PENDING_ROSTER = null, PENDING_FILE = '', PARSING_ROSTER = false, IMPORTING_ROSTER = false, SEEDING_ROSTER = false, ROSTER_SUMMARY = null;
   var LOCALSTART = {};                     // clock starts pressed on this phone, until the server confirms them
@@ -507,21 +507,23 @@
       { key: 'athletes', n: '01', title: 'Athlete roster', note: ATH ? ATH.length + ' on the list' : 'People & houses' },
       { key: 'events', n: '02', title: 'Events & entries', note: ST.events.length + ' scheduled' },
       { key: 'team', n: '03', title: 'Staff team', note: 'Accounts & access' },
-      { key: 'day', n: '04', title: 'Meet settings', note: 'Scoring & results' }
+      { key: 'day', n: '04', title: 'Meet settings', note: 'Scoring & results' },
+      { key: 'ads', n: '05', title: 'Manage Ads', note: ADS ? ADS.length + ' listings' : 'Club marketplace' }
     ];
-    var titles = { athletes: 'Athlete roster', events: 'Event programme', event: 'Event control', team: 'Officials', day: 'Scoring & results' };
+    var titles = { athletes: 'Athlete roster', events: 'Event programme', event: 'Event control', team: 'Officials', day: 'Scoring & results', ads: 'Manage Ads' };
     var descriptions = {
       athletes: 'Import the school roster once, then place athletes into events from one list.',
       events: 'Choose disciplines and divisions, then generate a live-ready programme from the roster.',
       event: 'Manage entries, relay lineups and heats for this event.',
       team: 'Add recorders and give each official the access they need.',
-      day: 'Set house points, meet details and final-results controls.'
+      day: 'Set house points, meet details and final-results controls.',
+      ads: 'Create and manage the club listings shown on the public marketplace.'
     };
     var nav = '<nav class="setup-rail" aria-label="Meet setup">' + sections.map(function (s) {
       var active = s.key === current;
       return '<a class="setup-step' + (active ? ' active' : '') + '" href="#/setup/' + s.key + '"' + (active ? ' aria-current="step"' : '') + '><span class="step-n">' + s.n + '</span><span class="step-copy"><b>' + s.title + '</b><small>' + s.note + '</small></span><span class="step-arrow" aria-hidden="true">↗</span></a>';
     }).join('') + '<div class="rail-note"><span class="rail-dot"></span><span><b>One meet. One live picture.</b><small>Changes show up across the event screens as you work.</small></span></div></nav>';
-    var content = tab === 'events' ? eventsSetup() : tab === 'event' ? eventManage(+r.b) : tab === 'team' ? teamSetup() : tab === 'day' ? daySetup() : athletesSetup();
+    var content = tab === 'events' ? eventsSetup() : tab === 'event' ? eventManage(+r.b) : tab === 'team' ? teamSetup() : tab === 'day' ? daySetup() : tab === 'ads' ? adsSetup() : athletesSetup();
     var scheduled = ST.events.filter(function (e) { return e.status === 'scheduled'; }).length;
     return '<div class="setup-shell setup-command-center"><header class="setup-intro"><div class="intro-copy"><p class="eyebrow"><span></span> SPORTS DAY 2026 · COMMAND CENTER</p><h1>' + titles[tab] + '</h1><p>' + descriptions[tab] + '</p></div><div class="setup-stats"><span><i></i><b>' + scheduled + '</b><small>Scheduled</small></span><span><i></i><b>' + (ATH ? ATH.length : '–') + '</b><small>Athletes</small></span><span><i></i><b>' + ST.houses.length + '</b><small>Houses</small></span></div></header><div class="setup-grid">' + nav + '<div class="setup-content">' + content + '</div></div></div>';
   }
@@ -530,6 +532,7 @@
     if (!ATH) api('GET', '/api/athletes').then(function (d) { ATH = d.athletes; render(); }, fail);
     if (tab === 'team' && !USERS) api('GET', '/api/users').then(function (d) { USERS = d.users; render(); }, fail);
     if (tab === 'day' && !AUDIT) api('GET', '/api/admin/audit?limit=60').then(function (d) { AUDIT = d.audit; render(); }, fail);
+    if (tab === 'ads' && !ADS) api('GET', '/api/admin/ads').then(function (d) { ADS = d.ads; render(); }, fail);
   }
   var refreshAth = function () { return api('GET', '/api/athletes').then(function (d) { ATH = d.athletes; }); };
   var houseSelect = function (name, all) { return '<select name="' + name + '">' + (all ? '<option value="">All houses</option>' : '') + ST.houses.map(function (h) { return '<option value="' + h.id + '">' + esc(h.name) + '</option>'; }).join('') + '</select>'; };
@@ -572,9 +575,11 @@
       var h = houseOf(a.house_id), eventCount = Number(a.entries) || 0;
       var eventNames = Array.isArray(a.event_names) ? a.event_names : [];
       var eventList = eventNames.length ? eventNames.map(esc).join(', ') : 'No events assigned';
-      return '<tr class="roster-row"><td><b class="roster-bib">' + esc(a.bib) + '</b></td><td><b class="roster-name">' + esc(a.full_name) + '</b></td><td><span class="dot" style="background:' + esc(houseColor(h)) + '"></span>' + esc(h.name) + '</td><td>' + esc(athleteLevels(a).join(', ') || '–') + '</td><td>' + (a.gender === 'F' ? 'Girl' : a.gender === 'M' ? 'Boy' : '–') + '</td><td><span class="entry-count">' + eventCount + ' event' + (eventCount === 1 ? '' : 's') + ' entered</span><small class="entry-events">' + eventList + '</small></td><td><div class="roster-actions"><button class="btn sm" data-act="editath" data-id="' + a.id + '">Edit</button><button class="btn sm danger" data-act="deleteath" data-id="' + a.id + '">Remove</button></div></td></tr>';
+      var photoStatus = a.has_photo ? 'Photo added' : a.photo_consent === 'declined' ? 'No consent' : a.photo_consent === 'granted' ? 'Consent given' : 'Not asked';
+      var photo = a.photo_url ? '<img class="athlete-photo-thumb" src="' + esc(a.photo_url) + '" alt="Photo of ' + esc(a.full_name) + '" loading="lazy">' : '<span class="athlete-photo-placeholder">No photo</span>';
+      return '<tr class="roster-row"><td><b class="roster-bib">' + esc(a.bib) + '</b></td><td><b class="roster-name">' + esc(a.full_name) + '</b></td><td><span class="dot" style="background:' + esc(houseColor(h)) + '"></span>' + esc(h.name) + '</td><td>' + esc(athleteLevels(a).join(', ') || '–') + '</td><td>' + (a.gender === 'F' ? 'Girl' : a.gender === 'M' ? 'Boy' : '–') + '</td><td><span class="entry-count">' + eventCount + ' event' + (eventCount === 1 ? '' : 's') + ' entered</span><small class="entry-events">' + eventList + '</small><button class="btn sm" data-act="editevents" data-id="' + a.id + '">Edit events</button></td><td class="athlete-photo-cell">' + photo + '<span class="photo-status">' + esc(photoStatus) + '</span><button class="btn sm" data-act="editphoto" data-id="' + a.id + '">' + (a.has_photo ? 'Photo & consent' : 'Add photo') + '</button></td><td><div class="roster-actions"><button class="btn sm" data-act="editath" data-id="' + a.id + '">Edit</button><button class="btn sm danger" data-act="deleteath" data-id="' + a.id + '">Remove</button></div></td></tr>';
     }).join('');
-    var roster = '<section class="roster-table-card card"><div class="roster-table-heading"><div><p class="eyebrow">ATHLETE DIRECTORY</p><h2>Roster <span>' + ATH.length + '</span></h2></div><div class="roster-table-actions"><a class="btn sm" href="/api/athletes.csv">Export Roster CSV</a><button class="btn sm danger" data-act="clearroster"' + (!ATH.length ? ' disabled' : '') + '>Clear Roster</button></div></div><div class="roster-filters"><label class="roster-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="m13 13 4 4"></path></svg><input id="aq" type="search" placeholder="Search athlete or bib..." value="' + esc(UI.aq) + '" aria-label="Search athlete or bib"></label>' + chips + '</div><div class="tw roster-table-wrap"><table><thead><tr><th>Bib</th><th>Name</th><th>House</th><th>Age group</th><th>Gender</th><th>Events entered</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>' + (rows || '<tr><td colspan="7" class="empty">No athletes match this view. Add a roster or change the search/filter.</td></tr>') + '</tbody></table></div>' + (list.length > 400 ? '<p class="help">Showing the first 400. Use search to narrow down.</p>' : '') + '</section>';
+    var roster = '<section class="roster-table-card card"><div class="roster-table-heading"><div><p class="eyebrow">ATHLETE DIRECTORY</p><h2>Roster <span>' + ATH.length + '</span></h2></div><div class="roster-table-actions"><a class="btn sm" href="/api/athletes.csv">Export Roster CSV</a><button class="btn sm danger" data-act="clearroster"' + (!ATH.length ? ' disabled' : '') + '>Clear Roster</button></div></div><div class="roster-filters"><label class="roster-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="m13 13 4 4"></path></svg><input id="aq" type="search" placeholder="Search athlete or bib..." value="' + esc(UI.aq) + '" aria-label="Search athlete or bib"></label>' + chips + '</div><div class="tw roster-table-wrap"><table><thead><tr><th>Bib</th><th>Name</th><th>House</th><th>Age group</th><th>Gender</th><th>Events entered</th><th>Athlete photo</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>' + (rows || '<tr><td colspan="8" class="empty">No athletes match this view. Add a roster or change the search/filter.</td></tr>') + '</tbody></table></div>' + (list.length > 400 ? '<p class="help">Showing the first 400. Use search to narrow down.</p>' : '') + '</section>';
     return upload + quick + seed + notice + roster;
   }
   function parseRosterFile(file) {
@@ -756,8 +761,186 @@
     modal('Edit ' + a.bib, '<form id="edath" class="formrow" style="grid-template-columns:1fr"><label>Full name<input name="full_name" value="' + esc(a.full_name) + '" required></label><label>House' + houseSelect('house_id') + '</label><div><p class="micro-label">ELIGIBLE AGE GROUPS</p>' + levelChips(athleteLevels(a)) + '</div><label>Gender<select name="gender"><option value="">(none)</option><option value="F"' + (a.gender === 'F' ? ' selected' : '') + '>Girl</option><option value="M"' + (a.gender === 'M' ? ' selected' : '') + '>Boy</option></select></label><label>Bib<input name="bib" value="' + esc(a.bib) + '"></label><div class="row"><button class="btn primary grow">Save</button><button type="button" class="btn danger" data-del>Delete</button></div></form>', function (d) {
       var f = $('#edath', d); f.house_id.value = a.house_id;
       bindLevelChips(f);
-      f.onsubmit = function (e) { e.preventDefault(); api('PATCH', '/api/athletes/' + a.id, { full_name: f.full_name.value, house_id: +f.house_id.value, levels: selectedLevels(f), gender: f.gender.value, bib: f.bib.value }).then(function () { closeModal(); return Promise.all([refreshAth(), load()]); }).then(render, fail); };
+      f.onsubmit = function (e) {
+        e.preventDefault();
+        var save = f.querySelector('button[type="submit"]') || f.querySelector('button.primary');
+        var payload = {
+          full_name: f.elements.namedItem('full_name').value,
+          house_id: +f.elements.namedItem('house_id').value,
+          levels: selectedLevels(f),
+          gender: f.elements.namedItem('gender').value,
+          bib: f.elements.namedItem('bib').value
+        };
+        save.disabled = true; save.textContent = 'Saving…';
+        api('PATCH', '/api/athletes/' + a.id, payload)
+          .then(function () { closeModal(); return Promise.all([refreshAth(), load()]); })
+          .then(render, function (error) {
+            if (f.isConnected) { save.disabled = false; save.textContent = 'Save'; }
+            fail(error);
+          });
+      };
       $('[data-del]', d).onclick = function () { ask('Delete ' + a.full_name + '?', 'They are removed from the list and from every event they were entered in.', 'Delete', true).then(function (y) { if (y) api('DELETE', '/api/athletes/' + a.id).then(function () { return Promise.all([refreshAth(), load()]); }).then(render, fail); }); };
+    });
+  }
+
+  function assignedEvents(a) {
+    return ST.events.filter(function (ev) {
+      return ev.entries.some(function (entry) { return entry.athlete_id === a.id; });
+    });
+  }
+  function editAthleteEvents(id) {
+    var a = ATH.filter(function (athlete) { return athlete.id === +id; })[0];
+    if (!a) return;
+    var current = assignedEvents(a), currentIds = {};
+    current.forEach(function (ev) { currentIds[ev.id] = true; });
+    var individualEvents = ST.events.filter(function (ev) { return ev.kind !== 'relay'; }).sort(function (left, right) {
+      return left.name.localeCompare(right.name) || left.level.localeCompare(right.level) || String(left.gender || '').localeCompare(String(right.gender || ''));
+    });
+    var options = individualEvents.map(function (ev) {
+      var already = !!currentIds[ev.id];
+      var eligible = athleteFits(a, ev);
+      var division = (ev.level || 'Mixed') + (ev.gender ? ' · ' + (ev.gender === 'F' ? 'Girls' : 'Boys') : '');
+      var status = already ? (eligible ? 'Currently assigned' : 'Currently assigned · no longer eligible') : eligible ? 'Eligible' : 'Not eligible for this athlete';
+      return '<label class="athlete-event-option" data-search="' + esc((ev.name + ' ' + division).toLowerCase()) + '"><input type="checkbox" name="event_id" value="' + ev.id + '"' + (already ? ' checked' : '') + (!eligible && !already ? ' disabled' : '') + '><span><b>' + esc(ev.name) + '</b><small>' + esc(division + ' · ' + status) + '</small></span></label>';
+    }).join('');
+    var relayEvents = ST.events.filter(function (ev) { return ev.kind === 'relay'; }).map(function (ev) {
+      var entry = ev.entries.filter(function (item) { return (item.relayMembers || []).some(function (member) { return member.athlete_id === a.id; }); })[0];
+      var division = (ev.level || 'Mixed') + (ev.gender ? ' · ' + (ev.gender === 'F' ? 'Girls' : 'Boys') : '');
+      var status = entry ? 'Runner assigned' : 'Relay lineup';
+      return '<div class="athlete-event-option athlete-relay-option" data-search="' + esc((ev.name + ' ' + division).toLowerCase()) + '"><span><b>' + esc(ev.name) + '</b><small>' + esc(division + ' · ' + status) + '</small></span><a href="#/setup/event/' + ev.id + '" data-close>Manage relay</a></div>';
+    }).join('');
+    modal('Events for ' + a.full_name,
+      '<form id="athlete-events-form"><p class="help">Choose from the full schedule. New assignments must match age group and gender. Existing assignments can be removed; recorded results must be cleared first. Relay runners are managed in the lineup.</p><label class="athlete-event-search">Find an event<input name="event_search" type="search" placeholder="Search event or division"></label><div class="athlete-event-list">' +
+      (options || '<p class="help">No individual events are scheduled.</p>') + relayEvents + '</div><div class="row"><button class="btn primary grow" type="submit">Save event list</button><button type="button" class="btn" data-close>Cancel</button></div></form>',
+      function (d) {
+        var form = $('#athlete-events-form', d);
+        form.elements.namedItem('event_search').addEventListener('input', function (event) {
+          var query = event.target.value.trim().toLowerCase();
+          Array.prototype.forEach.call(form.querySelectorAll('.athlete-event-option'), function (option) {
+            option.hidden = option.dataset.search.indexOf(query) === -1;
+          });
+        });
+        form.onsubmit = function (event) {
+          event.preventDefault();
+          var selected = Array.prototype.map.call(form.querySelectorAll('input[name="event_id"]:checked'), function (input) { return +input.value; });
+          var save = form.querySelector('button[type="submit"]');
+          save.disabled = true; save.textContent = 'Saving…';
+          api('PUT', '/api/athletes/' + a.id + '/events', { event_ids: selected })
+            .then(function (result) { closeModal(); toast('Events updated · ' + result.added + ' added · ' + result.removed + ' removed'); return Promise.all([refreshAth(), load()]); })
+            .then(render, function (error) {
+              if (form.isConnected) { save.disabled = false; save.textContent = 'Save event list'; }
+              fail(error);
+            });
+        };
+      });
+  }
+  function compressPhoto(file) {
+    if (!file || !/^image\//i.test(file.type)) return Promise.reject(new Error('Choose an image file'));
+    return new Promise(function (resolve, reject) {
+      var image = new Image(), objectUrl = URL.createObjectURL(file);
+      image.onerror = function () { URL.revokeObjectURL(objectUrl); reject(new Error('This image could not be opened')); };
+      image.onload = function () {
+        URL.revokeObjectURL(objectUrl);
+        var scale = Math.min(1, 1200 / Math.max(image.naturalWidth, image.naturalHeight));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        var quality = 0.86;
+        (function encode() {
+          canvas.toBlob(function (blob) {
+            if (!blob) { reject(new Error('This photo could not be compressed')); return; }
+            if (blob.size > 512 * 1024 && quality > 0.4) { quality -= 0.1; encode(); return; }
+            if (blob.size > 512 * 1024) { reject(new Error('This photo is too large to compress')); return; }
+            var reader = new FileReader();
+            reader.onload = function () { resolve(String(reader.result).split(',')[1]); };
+            reader.onerror = function () { reject(new Error('This photo could not be read')); };
+            reader.readAsDataURL(blob);
+          }, 'image/jpeg', quality);
+        })();
+      };
+      image.src = objectUrl;
+    });
+  }
+  function editAthletePhoto(id) {
+    var a = ATH.filter(function (athlete) { return athlete.id === +id; })[0];
+    if (!a) return;
+    var preview = a.photo_url
+      ? '<img class="athlete-photo-preview" src="' + esc(a.photo_url) + '" alt="Current photo of ' + esc(a.full_name) + '">'
+      : '<div class="athlete-photo-empty">No photo added</div>';
+    modal('Photo for ' + a.full_name,
+      '<form id="athlete-photo-form"><div class="athlete-photo-current">' + preview + '</div><p class="help">Upload only with the athlete’s permission. Shared portraits appear on public results. Leaving the photo blank is fine.</p>' +
+      '<label>Photo consent<select name="consent"><option value="pending"' + (a.photo_consent === 'pending' || !a.photo_consent ? ' selected' : '') + '>Not asked yet</option><option value="granted"' + (a.photo_consent === 'granted' ? ' selected' : '') + '>Permission granted</option><option value="declined"' + (a.photo_consent === 'declined' ? ' selected' : '') + '>Declined — no photo</option></select></label>' +
+      '<label>Choose a photo<input name="photo" type="file" accept="image/*" capture="environment"><small>Phone camera or photo library · compressed to JPEG (max 512 KB)</small></label>' +
+      '<div class="row"><button class="btn primary grow" type="submit">Save photo & consent</button>' + (a.has_photo ? '<button type="button" class="btn danger" data-remove-photo>Remove photo</button>' : '') + '<button type="button" class="btn" data-close>Cancel</button></div></form>',
+      function (d) {
+        var form = $('#athlete-photo-form', d);
+        form.onsubmit = function (event) {
+          event.preventDefault();
+          var consent = form.elements.namedItem('consent').value, file = form.elements.namedItem('photo').files[0];
+          if (file && consent !== 'granted') return toast('Select “Permission granted” before uploading a photo', 'e');
+          var save = form.querySelector('button[type="submit"]');
+          save.disabled = true; save.textContent = 'Saving…';
+          var request = file
+            ? compressPhoto(file).then(function (data) { return api('POST', '/api/athletes/' + a.id + '/photo', { consent: consent, data: data }); })
+            : api('PATCH', '/api/athletes/' + a.id + '/photo-consent', { status: consent });
+          request.then(function () { closeModal(); toast(consent === 'declined' ? 'Consent recorded; photo removed' : 'Photo consent saved'); return Promise.all([refreshAth(), load()]); })
+            .then(render, function (error) {
+              if (form.isConnected) { save.disabled = false; save.textContent = 'Save photo & consent'; }
+              fail(error);
+            });
+        };
+        var remove = $('[data-remove-photo]', d);
+        if (remove) remove.onclick = function () {
+          api('DELETE', '/api/athletes/' + a.id + '/photo').then(function () { closeModal(); toast('Photo removed'); return Promise.all([refreshAth(), load()]); }).then(render, fail);
+        };
+      });
+  }
+  function adsSetup() {
+    if (!ADS) return '<div class="empty card">Loading ads…</div>';
+    var rows = ADS.map(function (ad) {
+      var photo = ad.image_url ? '<img class="admin-ad-photo" src="' + esc(ad.image_url) + '" alt="" loading="lazy">' : '<span class="admin-ad-photo admin-ad-photo-empty">No image</span>';
+      return '<article class="admin-ad-row">' + photo + '<div class="admin-ad-copy"><span class="eyebrow">' + esc(ad.club_name) + '</span><h3>' + esc(ad.title) + '</h3><small>' + esc(ad.representative_name) + ' · ' + esc(ad.phone) + '</small></div><span class="admin-ad-status ' + (ad.is_active ? 'active' : '') + '">' + (ad.is_active ? 'Visible' : 'Hidden') + '</span><div class="admin-ad-actions"><button class="btn sm" data-act="editad" data-id="' + ad.id + '">Edit</button><button class="btn sm" data-act="togglead" data-id="' + ad.id + '">' + (ad.is_active ? 'Hide' : 'Show') + '</button><button class="btn sm danger" data-act="deletead" data-id="' + ad.id + '">Delete</button></div></article>';
+    }).join('');
+    return '<section class="ads-admin card"><header class="ads-admin-heading"><div><p class="eyebrow">PUBLIC MARKETPLACE</p><h2>Club ads</h2><p class="help">Only visible ads appear on the public Ads page. Newly created ads are hidden until approved.</p></div><button class="btn primary" data-act="newad">+ Create ad</button></header>' +
+      (rows ? '<div class="admin-ad-list">' + rows + '</div>' : '<div class="empty">No ads yet. Create the first club listing.</div>') + '</section>';
+  }
+  function editAd(id) {
+    var ad = id ? ADS.filter(function (item) { return item.id === +id; })[0] : null;
+    if (id && !ad) return;
+    var preview = ad && ad.image_url ? '<img class="admin-ad-preview" src="' + esc(ad.image_url) + '" alt="Current ad image">' : '<div class="athlete-photo-empty">No image selected</div>';
+    var formHtml = '<form id="ad-form" class="formrow" style="grid-template-columns:1fr"><div class="admin-ad-preview-wrap">' + preview + '</div>' +
+      '<label>Club name<input name="club_name" required maxlength="80" value="' + esc(ad ? ad.club_name : '') + '"></label>' +
+      '<label>Title<input name="title" required maxlength="120" value="' + esc(ad ? ad.title : '') + '"></label>' +
+      '<label>Description<textarea name="description" rows="3" maxlength="600">' + esc(ad ? ad.description : '') + '</textarea></label>' +
+      '<label>Price<input name="price" maxlength="80" placeholder="e.g. M25 each" value="' + esc(ad ? ad.price : '') + '"></label>' +
+      '<label>Where to find them<input name="location" maxlength="160" value="' + esc(ad ? ad.location : '') + '"></label>' +
+      '<label>Representative name<input name="representative_name" required maxlength="80" value="' + esc(ad ? ad.representative_name : '') + '"></label>' +
+      '<label>Phone<input name="phone" type="tel" required maxlength="24" value="' + esc(ad ? ad.phone : '') + '"></label>' +
+      '<label>WhatsApp number<input name="whatsapp" type="tel" maxlength="24" value="' + esc(ad ? ad.whatsapp : '') + '"></label>' +
+      '<label>Selling date or time (optional)<input name="selling_when" maxlength="100" value="' + esc(ad ? ad.selling_when : '') + '"></label>' +
+      '<label>Representative photo<input name="image" type="file" accept="image/*" capture="environment"><small>Compressed to JPEG, max 512 KB</small></label>' +
+      '<label class="admin-ad-visibility"><input name="is_active" type="checkbox"' + (ad && ad.is_active ? ' checked' : '') + '> Show this ad publicly</label>' +
+      '<div class="row"><button class="btn primary grow" type="submit">Save ad</button><button class="btn" type="button" data-close>Cancel</button></div></form>';
+    modal(ad ? 'Edit ad' : 'Create ad', formHtml, function (d) {
+      var form = $('#ad-form', d);
+      form.onsubmit = function (event) {
+        event.preventDefault();
+        var fields = ['club_name', 'title', 'description', 'price', 'location', 'representative_name', 'phone', 'whatsapp', 'selling_when'];
+        var body = {};
+        fields.forEach(function (key) { body[key] = form.elements.namedItem(key).value; });
+        body.is_active = form.elements.namedItem('is_active').checked;
+        var file = form.elements.namedItem('image').files[0];
+        var save = form.querySelector('button[type="submit"]');
+        save.disabled = true; save.textContent = 'Saving…';
+        var prepare = file ? compressPhoto(file).then(function (image) { body.image = image; }) : Promise.resolve();
+        prepare.then(function () { return api(ad ? 'PATCH' : 'POST', '/api/admin/ads' + (ad ? '/' + ad.id : ''), body); })
+          .then(function () { closeModal(); toast('Ad saved'); return api('GET', '/api/admin/ads'); })
+          .then(function (result) { ADS = result.ads; render(); }, function (error) {
+            if (form.isConnected) { save.disabled = false; save.textContent = 'Save ad'; }
+            fail(error);
+          });
+      };
     });
   }
 
@@ -858,8 +1041,26 @@
   }
   function editEvent(id) {
     var ev = evOf(id);
-    modal('Edit event', '<form id="edev" class="formrow" style="grid-template-columns:1fr"><label>Name<input name="name" value="' + esc(ev.name) + '" required></label><label>Age group<select name="level">' + LEVELS.concat(['Mixed']).map(function (l) { return '<option' + (ev.level === l ? ' selected' : '') + '>' + l + '</option>'; }).join('') + '</select></label><label>Gender<select name="gender"><option value="">Mixed</option><option value="F"' + (ev.gender === 'F' ? ' selected' : '') + '>Girls</option><option value="M"' + (ev.gender === 'M' ? ' selected' : '') + '>Boys</option></select></label><label>Measured in<select name="measure"><option value="time"' + (ev.measure === 'time' ? ' selected' : '') + '>Time (stopwatch)</option><option value="distance"' + (ev.measure === 'distance' ? ' selected' : '') + '>Distance (metres)</option></select></label><label>Start time<input name="sched_time" type="time" value="' + esc(ev.time) + '"></label><button class="btn primary">Save</button></form>', function (d) {
-      var f = $('#edev', d); f.onsubmit = function (e) { e.preventDefault(); api('PATCH', '/api/events/' + id, { name: f.name.value, level: f.level.value, gender: f.gender.value, measure: f.measure.value, sched_time: f.sched_time.value }).then(function () { closeModal(); return load(); }).then(render, fail); };
+    modal('Edit event', '<form id="edev" class="formrow" style="grid-template-columns:1fr"><label>Name<input name="name" value="' + esc(ev.name) + '" required></label><label>Age group<select name="level">' + LEVELS.concat(['Mixed']).map(function (l) { return '<option' + (ev.level === l ? ' selected' : '') + '>' + l + '</option>'; }).join('') + '</select></label><label>Gender<select name="gender"><option value="">Mixed</option><option value="F"' + (ev.gender === 'F' ? ' selected' : '') + '>Girls</option><option value="M"' + (ev.gender === 'M' ? ' selected' : '') + '>Boys</option></select></label><label>Measured in<select name="measure"><option value="time"' + (ev.measure === 'time' ? ' selected' : '') + '>Time (stopwatch)</option><option value="distance"' + (ev.measure === 'distance' ? ' selected' : '') + '>Distance (metres)</option></select></label><label>Start time<input name="sched_time" type="time" value="' + esc(ev.time) + '"></label><button class="btn primary" type="submit">Save changes</button></form>', function (d) {
+      var f = $('#edev', d);
+      f.onsubmit = function (e) {
+        e.preventDefault();
+        var save = f.querySelector('button[type="submit"]');
+        var payload = {
+          name: f.elements.namedItem('name').value,
+          level: f.elements.namedItem('level').value,
+          gender: f.elements.namedItem('gender').value,
+          measure: f.elements.namedItem('measure').value,
+          sched_time: f.elements.namedItem('sched_time').value
+        };
+        save.disabled = true; save.textContent = 'Saving…';
+        api('PATCH', '/api/events/' + id, payload)
+          .then(function () { closeModal(); return load(); })
+          .then(render, function (error) {
+            if (f.isConnected) { save.disabled = false; save.textContent = 'Save changes'; }
+            fail(error);
+          });
+      };
     });
   }
 
@@ -939,6 +1140,8 @@
     cancelimport: function () { PENDING_ROSTER = null; PENDING_FILE = ''; render(); },
     ahouse: function (el) { UI.ahouse = el.dataset.k; render(); },
     editath: function (el) { editAthlete(el.dataset.id); },
+    editevents: function (el) { editAthleteEvents(+el.dataset.id); },
+    editphoto: function (el) { editAthletePhoto(+el.dataset.id); },
     deleteath: function (el) { removeAthlete(el.dataset.id); },
     clearroster: clearRoster,
     quickadd: quickAddAthlete,
@@ -949,6 +1152,26 @@
     addathletes: function (el) { if (ATH) addAthletesDialog(+el.dataset.id); else refreshAth().then(function () { addAthletesDialog(+el.dataset.id); }, fail); },
     addall: function (el) { var ev = evOf(+el.dataset.id); api('POST', '/api/events/' + el.dataset.id + '/entries', { all: true }).then(function (r) { toast(ev.kind === 'relay' ? r.configured + ' relay lineups ready' : r.added + ' added'); return Promise.all([load(), refreshAth()]); }).then(render, fail); },
     editevent: function (el) { editEvent(+el.dataset.id); },
+    newad: function () { editAd(null); },
+    editad: function (el) { editAd(+el.dataset.id); },
+    togglead: function (el) {
+      var ad = ADS.filter(function (item) { return item.id === +el.dataset.id; })[0];
+      if (!ad) return;
+      api('PATCH', '/api/admin/ads/' + ad.id, { is_active: !ad.is_active })
+        .then(function () { return api('GET', '/api/admin/ads'); })
+        .then(function (result) { ADS = result.ads; render(); }, fail);
+    },
+    deletead: function (el) {
+      var ad = ADS.filter(function (item) { return item.id === +el.dataset.id; })[0];
+      if (!ad) return;
+      ask('Delete this ad?', ad.club_name + ' · ' + ad.title + ' will be permanently removed.', 'Delete ad', true).then(function (confirmed) {
+        if (!confirmed) return;
+        api('DELETE', '/api/admin/ads/' + ad.id).then(function () {
+          ADS = ADS.filter(function (item) { return item.id !== ad.id; });
+          render(); toast('Ad deleted');
+        }, fail);
+      });
+    },
     delevent: function (el) { var ev = evOf(+el.dataset.id); ask('Delete ' + ev.name + '?', 'Its ' + ev.count + ' entries and any results are deleted too.', 'Delete event', true).then(function (y) { if (y) api('DELETE', '/api/events/' + ev.id).then(function () { location.hash = '#/setup/events'; return load(); }).then(render, fail); }); },
     makeheats: function (el) { api('POST', '/api/events/' + el.dataset.id + '/heats', { size: +$('#hsize').value }).then(function (r) { toast(r.heats + ' heat' + (r.heats === 1 ? '' : 's')); return load(); }).then(render, fail); },
     genpw: function () { var w = ['Hawk', 'Eagle', 'Raven', 'Falcon', 'Track', 'Sprint', 'Maseru', 'Jump'], p = w[Math.floor(Math.random() * w.length)] + '-' + (1000 + Math.floor(Math.random() * 9000)) + '-' + w[Math.floor(Math.random() * w.length)]; $('#adduser input[name=password]').value = p; toast('Password: ' + p); },

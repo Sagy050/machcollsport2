@@ -43,8 +43,26 @@ const id = (p: Record<string, unknown>, name = "id") => {
 const clientIp = (r: Request) => r.headers.get("cf-connecting-ip") || (r.headers.get("x-forwarded-for") || "").split(",")[0]?.trim() || "?";
 const MAX_ROSTER_BYTES = 8 * 1024 * 1024;
 const MAX_ROSTER_BASE64 = Math.ceil(MAX_ROSTER_BYTES / 3) * 4;
+const MAX_MEDIA_BYTES = 512 * 1024;
+const MAX_MEDIA_BASE64 = Math.ceil(MAX_MEDIA_BYTES / 3) * 4;
+
+function decodeJpeg(data: unknown) {
+  if (typeof data !== "string" || data.length > MAX_MEDIA_BASE64 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) {
+    throw bad("Image data is invalid or too large");
+  }
+  const binary = atob(data);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  if (bytes.length < 4 || bytes.length > MAX_MEDIA_BYTES || btoa(binary) !== data ||
+    bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff ||
+    bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) {
+    throw bad("Upload a valid JPEG image no larger than 512 KB");
+  }
+  return bytes;
+}
 
 route("GET", "/api/state", "public", ({ request }) => sendSnapshot(request, "public"));
+route("GET", "/api/ads", "public", async () => json({ ads: await store.listAds(true) }));
 route("GET", "/api/results.csv", "public", async () => csv(await store.csvOf("public"), "sports-day-results.csv"));
 route("GET", "/api/time", "public", () => json({ now: Date.now() }));
 route("GET", "/api/me", "public", ({ user }) =>
@@ -100,6 +118,14 @@ route("POST", "/api/entries/:id/status", "staff", async ({ user, params, body })
 route("PATCH", "/api/entries/:id", "staff", async ({ user, params, body }) => json({ entry: await store.setHeat(user, id(params), body.heat) }));
 
 // ---- admin: set-up before the day ----------------------------------------------------------------
+route("GET", "/api/admin/ads", "admin", async () => json({ ads: await store.listAds() }));
+route("POST", "/api/admin/ads", "admin", async ({ user, body }) =>
+  json({ ad: await store.saveAd(user, null, body, body.image === undefined ? null : decodeJpeg(body.image)) }, 201),
+);
+route("PATCH", "/api/admin/ads/:id", "admin", async ({ user, params, body }) =>
+  json({ ad: await store.saveAd(user, id(params), body, body.image === undefined ? null : decodeJpeg(body.image)) }),
+);
+route("DELETE", "/api/admin/ads/:id", "admin", async ({ user, params }) => json(await store.deleteAd(user, id(params))));
 route("POST", "/api/events", "admin", async ({ user, body }) => json({ event: await store.createEvent(user, body) }, 201));
 route("POST", "/api/events/bulk", "admin", async ({ user, body }) => json(await store.bulkEvents(user, body), 201));
 route("PATCH", "/api/events/:id", "admin", async ({ user, params, body }) => json({ event: await store.updateEvent(user, id(params), body) }));
@@ -134,6 +160,19 @@ route("GET", "/api/athletes/template.xlsx", "admin", () => {
   });
 });
 route("POST", "/api/athletes/clear", "admin", async ({ user }) => json(await store.clearRoster(user)));
+route("POST", "/api/athletes/:id/photo", "admin", async ({ user, params, body }) => {
+  if (body.consent !== "granted") throw bad("Confirm the athlete has agreed to a public photo before uploading");
+  return json({ athlete: await store.setAthletePhoto(user, id(params), decodeJpeg(body.data)) });
+});
+route("PATCH", "/api/athletes/:id/photo-consent", "admin", async ({ user, params, body }) =>
+  json({ athlete: await store.setAthletePhotoConsent(user, id(params), body.status) }),
+);
+route("DELETE", "/api/athletes/:id/photo", "admin", async ({ user, params }) =>
+  json({ athlete: await store.removeAthletePhoto(user, id(params)) }),
+);
+route("PUT", "/api/athletes/:id/events", "admin", async ({ user, params, body }) =>
+  json(await store.updateAthleteEvents(user, id(params), body.event_ids)),
+);
 route("PATCH", "/api/athletes/:id", "admin", async ({ user, params, body }) => json({ athlete: await store.updateAthlete(user, id(params), body) }));
 route("DELETE", "/api/athletes/:id", "admin", async ({ user, params }) => json(await store.deleteAthlete(user, id(params))));
 route("GET", "/api/athletes.csv", "admin", async () => csv(await store.athletesCsv(), "athletes.csv"));
@@ -214,7 +253,11 @@ async function dispatch(request: Request): Promise<Response> {
     if (!user) throw new HttpError(401, "Please sign in");
     if (matched.access === "admin" && user.role !== "admin") throw new HttpError(403, "Admins only");
   }
-  const body = method === "GET" || method === "DELETE" ? {} : await readBody(request, BIG.get(url.pathname) || 256 * 1024);
+  const body = method === "GET" || method === "DELETE" ? {} : await readBody(request,
+    url.pathname.endsWith("/photo") || url.pathname === "/api/admin/ads" || /^\/api\/admin\/ads\/\d+$/.test(url.pathname)
+      ? MAX_MEDIA_BASE64 + 8192
+      : BIG.get(url.pathname) || 256 * 1024,
+  );
   return matched.fn({ request, url, params, body, user });
 }
 

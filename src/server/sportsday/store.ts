@@ -291,6 +291,19 @@ export async function deleteEvent(actor: Actor, id: number) {
 }
 
 // ---- athletes ------------------------------------------------------------------------------------
+const ATHLETE_PHOTO_BUCKET = "athlete-photos";
+const ADS_IMAGE_BUCKET = "ads-images";
+const MEDIA_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
+
+async function signedMediaUrls(bucket: string, paths: (string | null | undefined)[]) {
+  const unique = [...new Set(paths.filter((path): path is string => !!path))];
+  if (!unique.length) return new Map<string, string>();
+  const files = await q<{ path: string; signedUrl: string | null }[]>(
+    db().storage.from(bucket).createSignedUrls(unique, MEDIA_URL_TTL_SECONDS),
+  );
+  return new Map(files.filter((file) => file.signedUrl).map((file) => [file.path, file.signedUrl!]));
+}
+
 export async function listAthletes() {
   const [athletes, entries, relayMembers, events] = await Promise.all([
     q<AthleteRow[]>(db().from("athletes").select("*").order("bib")),
@@ -316,13 +329,23 @@ export async function listAthletes() {
     const eventId = eventByEntryId.get(member.entry_id);
     if (eventId !== undefined) addEvent(member.athlete_id, eventId);
   }
+  const urls = await signedMediaUrls(ATHLETE_PHOTO_BUCKET, athletes
+    .filter((athlete) => athlete.photo_consent === "granted")
+    .map((athlete) => athlete.photo_path));
   return athletes.map((athlete) => {
     const eventIds = athleteEvents.get(athlete.id) || new Set<number>();
     const eventNames = [...eventIds]
       .map((id) => eventById.get(id))
       .filter((name): name is string => name !== undefined)
       .sort((a, b) => a.localeCompare(b));
-    return { ...athlete, entries: eventIds.size, event_names: eventNames };
+    const { photo_path, ...visible } = athlete;
+    return {
+      ...visible,
+      has_photo: !!photo_path && athlete.photo_consent === "granted",
+      photo_url: athlete.photo_consent === "granted" && photo_path ? urls.get(photo_path) || null : null,
+      entries: eventIds.size,
+      event_names: eventNames,
+    };
   });
 }
 const getAthlete = (id: number) => q<AthleteRow | null>(db().from("athletes").select("*").eq("id", id).maybeSingle());
@@ -405,6 +428,198 @@ export async function updateAthlete(actor: Actor, id: number, b: Body) {
   return getAthlete(id);
 }
 
+export async function updateAthleteEvents(actor: Actor, id: number, eventIds: unknown) {
+  if (!Array.isArray(eventIds) || eventIds.length > 200) throw bad("Choose up to 200 events");
+  const ids = eventIds.map((eventId) => int(eventId, { field: "Event" }));
+  if (new Set(ids).size !== ids.length) throw bad("An event can only be selected once");
+  const athlete = await getAthlete(id);
+  if (!athlete) throw new HttpError(404, "Athlete not found");
+
+  const [current, events] = await Promise.all([
+    q<{ id: number; event_id: number; perf_value: number | null; status: string }[]>(
+      db().from("sd_entries").select("id,event_id,perf_value,status").eq("athlete_id", id),
+    ),
+    q<EventRow[]>(db().from("sd_events").select("*")),
+  ]);
+  const eventById = new Map(events.map((event) => [event.id, event]));
+  const currentByEvent = new Map(current.map((entry) => [entry.event_id, entry]));
+  for (const eventId of ids) {
+    const event = eventById.get(eventId);
+    if (!event) throw bad("One or more selected events no longer exist");
+    if (event.kind === "relay") throw bad("Relay runners are assigned in the relay lineup");
+    if (!currentByEvent.has(eventId) && !fits(event, athlete)) {
+      throw bad(`${event.name} does not match this athlete’s age group and gender`);
+    }
+  }
+
+  const selected = new Set(ids);
+  const removed = current.filter((entry) => !selected.has(entry.event_id));
+  for (const entry of removed) {
+    const event = eventById.get(entry.event_id);
+    if (entry.perf_value !== null || entry.status !== "ok") {
+      throw new HttpError(409, `Clear ${event?.name || "the event"} result before removing this assignment`);
+    }
+  }
+  if (removed.length) {
+    await q(db().from("sd_entries").delete().in("id", removed.map((entry) => entry.id)));
+  }
+
+  const addedEvents = ids.filter((eventId) => !currentByEvent.has(eventId));
+  if (addedEvents.length) {
+    const updatedAt = now();
+    await q(db().from("sd_entries").insert(addedEvents.map((eventId) => ({
+      event_id: eventId,
+      athlete_id: id,
+      name: athlete.full_name,
+      house_id: athlete.house_id,
+      heat: 1,
+      status: "ok",
+      updated_by: actor?.id || null,
+      updated_at: updatedAt,
+    }))));
+  }
+  await audit(actor, "athlete.events_update", { athlete_id: id, added: addedEvents.length, removed: removed.length });
+  return { added: addedEvents.length, removed: removed.length, athlete: await getAthlete(id) };
+}
+
+export async function setAthletePhoto(actor: Actor, id: number, image: Uint8Array) {
+  if (!image.length || image.length > 512 * 1024) throw bad("Upload a JPEG photo no larger than 512 KB");
+  const cur = await getAthlete(id);
+  if (!cur) throw new HttpError(404, "Athlete not found");
+  const previousPath = cur.photo_path || null;
+  const path = `${id}/${crypto.randomUUID()}.jpg`;
+  await q(db().storage.from(ATHLETE_PHOTO_BUCKET).upload(path, image, { contentType: "image/jpeg", upsert: false }));
+  try {
+    await q(db().from("athletes").update({ photo_path: path, photo_consent: "granted" }).eq("id", id));
+  } catch (error) {
+    try {
+      await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([path]));
+    } catch (cleanupError) {
+      console.error("Could not remove an unused athlete photo", cleanupError);
+    }
+    throw error;
+  }
+  if (previousPath) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([previousPath]));
+  await audit(actor, "athlete.photo_upload", { id });
+  return (await listAthletes()).find((athlete) => athlete.id === id) || null;
+}
+
+export async function setAthletePhotoConsent(actor: Actor, id: number, status: unknown) {
+  const consent = oneOf(status, ["pending", "granted", "declined"], "Photo consent");
+  const cur = await getAthlete(id);
+  if (!cur) throw new HttpError(404, "Athlete not found");
+  const photoPath = consent === "granted" ? cur.photo_path : null;
+  await q(db().from("athletes").update({ photo_consent: consent, photo_path: photoPath }).eq("id", id));
+  if (cur.photo_path && !photoPath) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([cur.photo_path]));
+  await audit(actor, "athlete.photo_consent", { id, status: consent });
+  return (await listAthletes()).find((athlete) => athlete.id === id) || null;
+}
+
+export async function removeAthletePhoto(actor: Actor, id: number) {
+  const cur = await getAthlete(id);
+  if (!cur) throw new HttpError(404, "Athlete not found");
+  await q(db().from("athletes").update({ photo_path: null }).eq("id", id));
+  if (cur.photo_path) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([cur.photo_path]));
+  await audit(actor, "athlete.photo_remove", { id });
+  return (await listAthletes()).find((athlete) => athlete.id === id) || null;
+}
+
+type AdRow = {
+  id: number;
+  club_name: string;
+  title: string;
+  description: string;
+  price: string;
+  location: string;
+  representative_name: string;
+  phone: string;
+  whatsapp: string;
+  selling_when: string;
+  image_path: string | null;
+  is_active: boolean;
+  created_at: number;
+  updated_at: number;
+};
+
+function cleanAd(body: Body, current: AdRow | null) {
+  const phone = body.phone === undefined && current ? current.phone : str(body.phone, { field: "Phone", required: true, min: 7, max: 24 });
+  const whatsapp = body.whatsapp === undefined && current ? current.whatsapp : str(body.whatsapp, { field: "WhatsApp number", max: 24 });
+  const validPhone = (value: string) => /^\+?[\d ()-]+$/.test(value) && value.replace(/\D/g, "").length >= 7 && value.replace(/\D/g, "").length <= 15;
+  if (!validPhone(phone)) throw bad("Phone must include 7 to 15 digits");
+  if (whatsapp && !validPhone(whatsapp)) throw bad("WhatsApp number must include 7 to 15 digits");
+  const active = body.is_active === undefined && current ? current.is_active : body.is_active === true;
+  if (body.is_active !== undefined && typeof body.is_active !== "boolean") throw bad("Ad visibility must be true or false");
+  return {
+    club_name: body.club_name === undefined && current ? current.club_name : str(body.club_name, { field: "Club name", required: true, min: 2, max: 80 }),
+    title: body.title === undefined && current ? current.title : str(body.title, { field: "Title", required: true, min: 2, max: 120 }),
+    description: body.description === undefined && current ? current.description : str(body.description, { field: "Description", max: 600 }),
+    price: body.price === undefined && current ? current.price : str(body.price, { field: "Price", max: 80 }),
+    location: body.location === undefined && current ? current.location : str(body.location, { field: "Location", max: 160 }),
+    representative_name: body.representative_name === undefined && current
+      ? current.representative_name
+      : str(body.representative_name, { field: "Representative name", required: true, min: 2, max: 80 }),
+    phone,
+    whatsapp,
+    selling_when: body.selling_when === undefined && current ? current.selling_when : str(body.selling_when, { field: "Selling date or time", max: 100 }),
+    is_active: active,
+  };
+}
+
+async function adsWithUrls(rows: AdRow[]) {
+  const urls = await signedMediaUrls(ADS_IMAGE_BUCKET, rows.map((row) => row.image_path));
+  return rows.map(({ image_path, ...row }) => ({
+    ...row,
+    has_image: !!image_path,
+    image_url: image_path ? urls.get(image_path) || null : null,
+  }));
+}
+
+export async function listAds(activeOnly = false) {
+  let query = db().from("ads").select("*").order("updated_at", { ascending: false }).order("id");
+  if (activeOnly) query = query.eq("is_active", true);
+  const rows = await q<AdRow[]>(query);
+  return adsWithUrls(rows);
+}
+
+export async function saveAd(actor: Actor, id: number | null, body: Body, image: Uint8Array | null) {
+  const current = id === null ? null : await q<AdRow | null>(db().from("ads").select("*").eq("id", id).maybeSingle());
+  if (id !== null && !current) throw new HttpError(404, "Ad not found");
+  if (image && (!image.length || image.length > 512 * 1024)) throw bad("Upload a JPEG image no larger than 512 KB");
+  const fields = cleanAd(body, current);
+  const imagePath = image ? `ads/${crypto.randomUUID()}.jpg` : current?.image_path || null;
+  if (image) {
+    await q(db().storage.from(ADS_IMAGE_BUCKET).upload(imagePath!, image, { contentType: "image/jpeg", upsert: false }));
+  }
+  const values = { ...fields, image_path: imagePath, updated_at: now() };
+  let saved: AdRow;
+  try {
+    saved = id === null
+      ? await q<AdRow>(db().from("ads").insert({ ...values, created_at: values.updated_at }).select("*").single())
+      : await q<AdRow>(db().from("ads").update(values).eq("id", id).select("*").single());
+  } catch (error) {
+    if (image && imagePath) {
+      try {
+        await q(db().storage.from(ADS_IMAGE_BUCKET).remove([imagePath]));
+      } catch (cleanupError) {
+        console.error("Could not remove an unused ad image", cleanupError);
+      }
+    }
+    throw error;
+  }
+  await audit(actor, id === null ? "ad.create" : "ad.update", { id: saved.id, club_name: saved.club_name, is_active: saved.is_active });
+  if (image && current?.image_path) await q(db().storage.from(ADS_IMAGE_BUCKET).remove([current.image_path]));
+  return (await adsWithUrls([saved]))[0];
+}
+
+export async function deleteAd(actor: Actor, id: number) {
+  const current = await q<AdRow | null>(db().from("ads").select("*").eq("id", id).maybeSingle());
+  if (!current) throw new HttpError(404, "Ad not found");
+  await q(db().from("ads").delete().eq("id", id));
+  if (current.image_path) await q(db().storage.from(ADS_IMAGE_BUCKET).remove([current.image_path]));
+  await audit(actor, "ad.delete", { id, club_name: current.club_name, title: current.title });
+  return { deleted: id };
+}
+
 export async function deleteAthlete(actor: Actor, id: number) {
   const cur = await getAthlete(id);
   if (!cur) throw new HttpError(404, "Athlete not found");
@@ -429,22 +644,26 @@ export async function deleteAthlete(actor: Actor, id: number) {
   }
   await q(db().from("sd_entries").delete().eq("athlete_id", id));
   await q(db().from("athletes").delete().eq("id", id));
+  if (cur.photo_path) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([cur.photo_path]));
   await audit(actor, "athlete.delete", { id, name: cur.full_name });
   return { deleted: id };
 }
 
 export async function clearRoster(actor: Actor) {
-  const [results, relayResults, athletes, entries] = await Promise.all([
+  const [results, relayResults, athletes, entries, photos] = await Promise.all([
     countOf(db().from("sd_entries").select("id", { count: "exact", head: true }).or("perf_value.not.is.null,status.neq.ok")),
     countOf(db().from("relay_splits").select("entry_id", { count: "exact", head: true })),
     countOf(db().from("athletes").select("id", { count: "exact", head: true })),
     countOf(db().from("sd_entries").select("id", { count: "exact", head: true })),
+    q<{ photo_path: string }[]>(db().from("athletes").select("photo_path").not("photo_path", "is", null)),
   ]);
   if (results || relayResults) throw new HttpError(409, "Clear all event results before clearing the roster");
   const backup = `before-roster-clear-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   await q(db().from("backups").insert({ created_at: now(), label: backup, data: await backupData() }));
   await q(db().from("sd_entries").delete().gt("id", 0));
   await q(db().from("athletes").delete().gt("id", 0));
+  const photoPaths = photos.map((photo) => photo.photo_path);
+  if (photoPaths.length) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove(photoPaths));
   await audit(actor, "roster.clear", { athletes, entries });
   return { athletes, entries, backup };
 }
@@ -939,9 +1158,14 @@ export async function reset(actor: Actor, scope: unknown) {
   const label = `before-reset-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   await q(db().from("backups").insert({ created_at: now(), label, data: await backupData() }));
   if (sc === "all") {
+    const photos = await q<{ photo_path: string }[]>(
+      db().from("athletes").select("photo_path").not("photo_path", "is", null),
+    );
     await q(db().from("sd_entries").delete().gt("id", 0));
     await q(db().from("sd_events").delete().gt("id", 0));
     await q(db().from("athletes").delete().gt("id", 0));
+    const photoPaths = photos.map((photo) => photo.photo_path);
+    if (photoPaths.length) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove(photoPaths));
   } else {
     await q(db().from("relay_splits").delete().gt("entry_id", 0));
     await q(db().from("sd_entries").update({ performance: "", perf_value: null, status: "ok", updated_at: now() }).gt("id", 0));
@@ -985,6 +1209,14 @@ async function loadRaw() {
     selectAll<RelaySplitRow>("relay_splits", "entry_id,leg,cumulative_ms", undefined, ["entry_id", "leg"]),
   ]);
   const names = new Map(staff.map((s) => [s.staff_no, s.display_name]));
+  const photoUrls = await signedMediaUrls(
+    ATHLETE_PHOTO_BUCKET,
+    athletes.filter((athlete) => athlete.photo_consent === "granted").map((athlete) => athlete.photo_path),
+  );
+  const publicAthletes = athletes.map((athlete) => ({
+    ...athlete,
+    photo_url: athlete.photo_consent === "granted" && athlete.photo_path ? photoUrls.get(athlete.photo_path) || null : null,
+  }));
   const athletesById = new Map(athletes.map((athlete) => [athlete.id, athlete]));
   for (const e of entries) e.by_name = e.updated_by === null ? null : names.get(e.updated_by) || null;
   const members: RelayMemberRow[] = relayMembers.flatMap((member) => {
@@ -998,7 +1230,7 @@ async function loadRaw() {
         }]
       : [];
   });
-  return { settings, houses, events, entries, athletes, relayMembers: members, relaySplits };
+  return { settings, houses, events, entries, athletes: publicAthletes, relayMembers: members, relaySplits };
 }
 
 type Snap = { v: number; json: string; etag: string; state: ReturnType<typeof computeState> };

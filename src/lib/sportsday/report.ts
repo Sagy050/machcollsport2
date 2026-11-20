@@ -25,6 +25,10 @@ export type AthleteRow = {
   levels: string[];
   gender: string | null;
   created_at: number;
+  photo_path?: string | null;
+  photo_consent?: string;
+  has_photo?: boolean;
+  photo_url?: string | null;
 };
 export type EventRow = {
   id: number;
@@ -188,6 +192,7 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
         })),
       relaySplits: relaySplitsByEntry.get(e.id) || [],
     };
+    if (e.position === 1 && a?.photo_url) out.photoUrl = a.photo_url;
     if (staff) Object.assign(out, { by: e.by_name || null, at: e.updated_at, level: a ? a.level : null, levels: a ? a.levels : [], gender: a ? a.gender : null });
     return out;
   };
@@ -246,6 +251,7 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
     .slice(0, 15)
     .map((e) => {
       const ev = eventById.get(e.event_id);
+      const athlete = e.athlete_id === null ? null : athleteById.get(e.athlete_id);
       return {
         id: e.id,
         at: e.updated_at,
@@ -253,6 +259,7 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
         event: ev ? ev.name : "",
         level: ev ? ev.level : "",
         name: mode === "full" || e.athlete_id === null ? e.name : formatName(e.name, mode),
+        photoUrl: e.position === 1 ? athlete?.photo_url || null : null,
         house_id: e.house_id,
         position: e.position,
         performance: e.performance,
@@ -306,17 +313,17 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
   for (const lvl of LEVELS) {
     const inLevel = athleteAgeStats.filter((a) => a.level === lvl);
     const all = champion(inLevel);
-    if (all) ageGroups.push({ label: lvl, ...all });
+    if (all) ageGroups.push({ label: lvl, ...all, photoUrl: athleteById.get(all.athlete_id)?.photo_url || null });
     for (const g of ["F", "M"]) {
       const c = champion(inLevel.filter((a) => a.gender === g));
-      if (c) ageGroups.push({ label: `${lvl} ${GL[g]}`, ...c });
+      if (c) ageGroups.push({ label: `${lvl} ${GL[g]}`, ...c, photoUrl: athleteById.get(c.athlete_id)?.photo_url || null });
     }
   }
   const topAthletes = top
     .slice(0, 10)
     .map((a, i) => {
       const prev = i > 0 ? top[i - 1] : undefined;
-      return { ...a, rank: (prev && sameStats(a, prev) ? null : i + 1) as number | null };
+      return { ...a, photoUrl: athleteById.get(a.athlete_id)?.photo_url || null, rank: (prev && sameStats(a, prev) ? null : i + 1) as number | null };
     });
   // Give tied top athletes the shared rank number.
   let lastRank = 0;
@@ -326,7 +333,13 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
   });
   const awards = {
     topAthletes,
-    bestPerHouse: houses.map((h) => ({ house_id: h.id, athlete: champion(athleteStats.filter((a) => a.house_id === h.id)) })),
+    bestPerHouse: houses.map((h) => {
+      const athlete = champion(athleteStats.filter((a) => a.house_id === h.id));
+      return {
+        house_id: h.id,
+        athlete: athlete ? { ...athlete, photoUrl: athleteById.get(athlete.athlete_id)?.photo_url || null } : null,
+      };
+    }),
     ageGroups,
   };
 

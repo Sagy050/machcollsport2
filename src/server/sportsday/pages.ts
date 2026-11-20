@@ -2,8 +2,9 @@
 import indexHtml from "./html/index.html?raw";
 import staffHtml from "./html/staff.html?raw";
 import reportHtml from "./html/report.html?raw";
+import adsHtml from "./html/ads.html?raw";
 
-const PAGES = { index: indexHtml, staff: staffHtml, report: reportHtml } as const;
+const PAGES = { index: indexHtml, staff: staffHtml, report: reportHtml, ads: adsHtml } as const;
 const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js";
 
 function withLive(html: string, beforeScript: string) {

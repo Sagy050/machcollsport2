@@ -8,15 +8,17 @@ The Lovable-hosted Sports Day app: a public live scoreboard, staff event-operati
 2. Apply [`0005_athlete_multiple_divisions.sql`](./drizzle/migrations/0005_athlete_multiple_divisions.sql) after `0004`. It lets an athlete be assigned to more than one age group and seeds the corresponding individual event entries.
 3. Apply [`0006_ravens_events.sql`](./drizzle/migrations/0006_ravens_events.sql) after `0005`. It adds the Ravens PDF's missing events without changing the existing timed programme; set their times in **Setup → Events**.
 4. Apply [`0007_lower_junior_events.sql`](./drizzle/migrations/0007_lower_junior_events.sql) after `0006`. It adds the Lower Junior long jump and 4 × 100m relay events from the Eagles and Hawks lists.
-5. In Lovable’s server-side secrets, set `SPORTSDAY_SETUP_KEY` to a private random value of at least 32 characters. For example, generate one locally with:
+5. Apply [`0008_falcons_long_jump_divisions.sql`](./drizzle/migrations/0008_falcons_long_jump_divisions.sql) after `0007` to add the Falcons long-jump divisions.
+6. Apply [`0009_ads_and_athlete_photos.sql`](./drizzle/migrations/0009_ads_and_athlete_photos.sql) after `0008`. It adds admin-managed marketplace ads and private storage buckets for ad and consented athlete photos.
+7. In Lovable’s server-side secrets, set `SPORTSDAY_SETUP_KEY` to a private random value of at least 32 characters. For example, generate one locally with:
 
    ```sh
    node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
    ```
 
    Keep this value out of `VITE_` variables, source control, and shared screenshots.
-6. Open `/staff`, choose **First deployment? Set up the admin account**, enter the setup key, and choose the first administrator’s name, username, and password.
-7. After the first admin is created, remove `SPORTSDAY_SETUP_KEY` from the deployment secrets. Admin setup is also blocked while an active admin exists.
+8. Open `/staff`, choose **First deployment? Set up the admin account**, enter the setup key, and choose the first administrator’s name, username, and password.
+9. After the first admin is created, remove `SPORTSDAY_SETUP_KEY` from the deployment secrets. Admin setup is also blocked while an active admin exists.
 
 The migration seeds the default houses and meet settings. Start with the fresh Lovable database; do not copy the source SQLite file.
 
@@ -38,6 +40,7 @@ Use a development Lovable Cloud/Supabase project before using the data-backed ro
 ## Pages
 
 - `/` — public stadium landing page, live house standings, events, and athlete awards.
+- `/ads` — public, searchable student club marketplace.
 - `/staff` — staff sign-in, event recording, schedule, standings, roster, and admin setup.
 - `/report` — printable results and awards.
 

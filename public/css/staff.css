@@ -2724,3 +2724,41 @@ button:not(.btn) { min-height: 40px; font-size: 14px; }
   .setup-command-center .roster-table-heading { padding: 16px 14px 12px; }
   .setup-command-center .roster-filters .chips button { padding: 6px 10px; font-size: 14px; }
 }
+.athlete-photo-thumb { display: block; width: 112px; height: 112px; margin: 0 0 8px; border: 2px solid #e2e8f0; border-radius: 18px; object-fit: cover; background: #f1f5f9; }
+.athlete-photo-placeholder { display: grid; width: 112px; height: 112px; margin-bottom: 8px; place-items: center; border: 1px dashed #cbd5e1; border-radius: 18px; color: #64748b; background: #f8fafc; font-size: 12px; }
+.athlete-photo-cell { min-width: 145px; }
+.photo-status { display: block; margin: 0 0 7px; color: #64748b; font-size: 12px; }
+.athlete-photo-current,.admin-ad-preview-wrap { display: flex; justify-content: center; margin: 8px 0 16px; }
+.athlete-photo-preview,.admin-ad-preview { display: block; width: min(100%, 360px); max-height: 360px; border: 1px solid #e2e8f0; border-radius: 18px; object-fit: cover; background: #f1f5f9; }
+.athlete-photo-empty { display: grid; width: 180px; height: 180px; place-items: center; border: 1px dashed #cbd5e1; border-radius: 18px; color: #64748b; background: #f8fafc; }
+.athlete-event-search { display: grid; gap: 7px; margin: 12px 0; color: #475569; font-size: 13px; font-weight: 700; }
+.athlete-event-list { display: grid; max-height: 52vh; gap: 7px; overflow: auto; margin: 12px 0 18px; }
+.athlete-event-option { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.athlete-event-option input { width: auto; }
+.athlete-event-option span { display: grid; gap: 2px; min-width: 0; }
+.athlete-event-option small { color: #64748b; font-size: 12px; }
+.athlete-relay-option { justify-content: space-between; }
+.athlete-relay-option a { color: #1d4ed8; font-size: 13px; font-weight: 700; }
+.ads-admin-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+.ads-admin-heading h2 { margin: 0 0 7px; }
+.admin-ad-list { display: grid; gap: 10px; }
+.admin-ad-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; }
+.admin-ad-photo { display: block; width: 90px; height: 80px; border-radius: 12px; object-fit: cover; background: #f1f5f9; }
+.admin-ad-photo-empty { display: grid; place-items: center; color: #64748b; font-size: 11px; }
+.admin-ad-copy h3 { margin: 4px 0; }
+.admin-ad-copy small { color: #64748b; }
+.admin-ad-status { padding: 5px 10px; border-radius: 999px; background: #f1f5f9; color: #64748b; font-size: 12px; font-weight: 700; }
+.admin-ad-status.active { background: #dcfce7; color: #15803d; }
+.admin-ad-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.admin-ad-visibility { display: flex !important; grid-template-columns: auto 1fr; align-items: center; gap: 9px !important; }
+.admin-ad-visibility input { width: auto; }
+@media (max-width: 760px) {
+  .admin-ad-row { grid-template-columns: 72px minmax(0, 1fr); }
+  .admin-ad-photo { width: 72px; height: 72px; }
+  .admin-ad-status { grid-column: 2; justify-self: start; }
+  .admin-ad-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .ads-admin-heading { flex-direction: column; }
+}
+@media (max-width: 520px) {
+  .athlete-photo-thumb,.athlete-photo-placeholder { width: 88px; height: 88px; }
+}

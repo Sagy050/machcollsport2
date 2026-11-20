@@ -67,4 +67,70 @@ describe("computeState age-group awards", () => {
       ]),
     );
   });
+
+  it("includes signed athlete photos on public winner and award data only when supplied", () => {
+    const raw: RawData = {
+      settings: {
+        title: "Meet",
+        date: "2026-11-20",
+        start: "08:00",
+        venue: "Stadium",
+        scheme: DEFAULT_SCHEME,
+        nameDisplay: "full",
+        finalised: false,
+        finalisedAt: null,
+      },
+      houses: [{ id: 1, name: "Ravens", color: "#7c3aed", sort: 1 }],
+      athletes: [{
+        id: 1,
+        bib: "R01",
+        full_name: "Sentle Tiheli",
+        house_id: 1,
+        level: "Junior",
+        levels: ["Junior"],
+        gender: "M",
+        created_at: 1,
+      }],
+      events: [{
+        id: 1,
+        name: "100m",
+        level: "Junior",
+        gender: "M",
+        kind: "individual",
+        measure: "time",
+        relay_legs: 0,
+        sched_time: "08:00",
+        status: "completed",
+        heat_starts: {},
+        sort: 1,
+        created_at: 1,
+        updated_at: 1,
+      }],
+      entries: [{
+        id: 1,
+        event_id: 1,
+        athlete_id: 1,
+        name: "Sentle Tiheli",
+        house_id: 1,
+        heat: 1,
+        performance: "10.00",
+        perf_value: 10,
+        status: "ok",
+        updated_by: null,
+        updated_at: 1,
+      }],
+    };
+
+    const privateState = computeState(raw);
+    expect(privateState.events[0]?.entries[0]?.photoUrl).toBeUndefined();
+    expect(privateState.awards.topAthletes[0]?.photoUrl).toBeNull();
+
+    const publicState = computeState({
+      ...raw,
+      athletes: raw.athletes.map((athlete) => ({ ...athlete, photo_url: "https://images.example/signed-photo" })),
+    });
+    expect(publicState.events[0]?.entries[0]?.photoUrl).toBe("https://images.example/signed-photo");
+    expect(publicState.awards.topAthletes[0]?.photoUrl).toBe("https://images.example/signed-photo");
+    expect(publicState.awards.bestPerHouse[0]?.athlete?.photoUrl).toBe("https://images.example/signed-photo");
+  });
 });
