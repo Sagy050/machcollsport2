@@ -754,10 +754,16 @@
       SEEDING_ROSTER = false; render(); fail(error);
     });
   }
-  function quickAddAthlete() {
-    modal('Quick add athlete', '<form id="addath" class="formrow quick-add-form"><label>Full name<input name="full_name" required autocomplete="off"></label><label>House' + houseSelect('house_id') + '</label><div><p class="micro-label">ELIGIBLE AGE GROUPS</p>' + levelChips([]) + '</div><label>Gender<select name="gender"><option value="">Choose gender</option><option value="F">Girl</option><option value="M">Boy</option></select></label><button class="btn primary">Add athlete</button></form>', function (dialog) {
-      bindLevelChips($('#addath', dialog));
-      $('#addath input', dialog).focus();
+  function quickAddAthlete(houseId, eventId) {
+    var relay = eventId ? evOf(eventId) : null;
+    var levels = relay && relay.level !== 'Mixed' ? [relay.level] : [];
+    var title = houseId ? 'Add athlete to ' + houseOf(houseId).name : 'Quick add athlete';
+    modal(title, '<form id="addath" class="formrow quick-add-form"' + (houseId ? ' data-house-id="' + houseId + '"' : '') + (eventId ? ' data-relay-event="' + eventId + '"' : '') + '><label>Full name<input name="full_name" required autocomplete="off"></label><label>House' + houseSelect('house_id') + '</label><div><p class="micro-label">ELIGIBLE AGE GROUPS</p>' + levelChips(levels) + '</div><label>Gender<select name="gender"><option value="">Choose gender</option><option value="F">Girl</option><option value="M">Boy</option></select></label><button class="btn primary">Add athlete</button></form>', function (dialog) {
+      var form = $('#addath', dialog);
+      bindLevelChips(form);
+      if (houseId) form.house_id.value = houseId;
+      if (relay && relay.gender) form.gender.value = relay.gender;
+      $('input[name="full_name"]', form).focus();
     });
   }
   function removeAthlete(id) {
@@ -1010,14 +1016,15 @@
         var eligible = ATH ? ATH.filter(function (a) { return a.house_id === e.house_id && athleteFits(a, ev); }) : [];
         var names = members.length === relayLegs ? members.map(function (m) { return 'Leg ' + m.leg + ': ' + esc(m.name); }).join('<br>') :
           eligible.length < relayLegs ? '<span class="bad">Only ' + eligible.length + ' eligible runners; need ' + relayLegs + '</span>' : '<span class="bad">' + members.length + ' of ' + relayLegs + ' runners selected</span>';
-        return '<tr><td>' + esc(h.name) + '</td><td colspan="2">' + names + '</td><td><button class="btn sm" data-act="relaylineup" data-id="' + e.id + '" data-house="' + e.house_id + '"' + (eligible.length < relayLegs ? ' disabled' : '') + '>' + (members.length === relayLegs ? 'Change runners' : 'Set ' + relayLegs + ' runners') + '</button></td><td></td></tr>';
+        var addAthlete = eligible.length < relayLegs ? '<button class="btn sm" data-act="addrelayathlete" data-event="' + ev.id + '" data-house="' + e.house_id + '">+ Add athlete</button> ' : '';
+        return '<tr><td>' + esc(h.name) + '</td><td colspan="2">' + names + '</td><td>' + addAthlete + '<button class="btn sm" data-act="relaylineup" data-id="' + e.id + '" data-house="' + e.house_id + '"' + (eligible.length < relayLegs ? ' disabled' : '') + '>' + (members.length === relayLegs ? 'Change runners' : 'Set ' + relayLegs + ' runners') + '</button></td><td></td></tr>';
       }
       return '<tr><td><b>' + esc(e.bib || '–') + '</b></td><td>' + esc(e.name) + '</td><td><span class="dot" style="background:' + esc(houseColor(h)) + '"></span>' + esc(h.name) + '</td><td style="width:90px"><select data-change="entryheat" data-id="' + e.id + '" aria-label="Heat for ' + esc(e.name) + '">' + Array.apply(null, Array(Math.max(heats, 1) + 1)).map(function (_, i) { return '<option' + (e.heat === i + 1 ? ' selected' : '') + '>' + (i + 1) + '</option>'; }).join('') + '</select></td><td class="num"><button class="btn sm" data-act="removeentry" data-id="' + e.id + '">Remove</button></td></tr>';
     }).join('');
     return '<div class="ehead"><a class="btn sm" href="#/setup/events">‹ Events</a><div class="grow"><h2>' + esc(ev.name) + '</h2><small>' + esc(label(ev)) + ' · ' + (ev.measure === 'time' ? 'timed' : 'distance') + ' · ' + ev.count + ' athletes' + (heats > 1 ? ' · ' + heats + ' heats' : '') + '</small></div>' + pill(ev.status) + '</div>' +
       '<div class="card"><div class="row">' + (relay ? '<button class="btn primary" data-act="addall" data-id="' + id + '">Add everyone who fits</button>' : '<button class="btn primary" data-act="addathletes" data-id="' + id + '">Add athletes…</button><button class="btn" data-act="addall" data-id="' + id + '">Add everyone who fits</button>') + '<button class="btn" data-act="editevent" data-id="' + id + '">Edit details</button><button class="btn danger" data-act="delevent" data-id="' + id + '">Delete event</button></div>' +
       (ev.kind === 'relay' ? '' : '<div class="row" style="margin-top:12px"><label style="max-width:230px">Split into heats of about<input id="hsize" type="number" min="2" max="30" value="8"></label><button class="btn" data-act="makeheats" data-id="' + id + '" style="margin-top:18px">Make heats</button></div><p class="help">Heats mix the houses so every heat is fair. Each heat has its own clock, and the final places are worked out from all the times together.</p>') + '</div>' +
-      (relay ? '<div class="card"><h3>Relay teams and runners</h3><p class="help">' + relayHelp + ' If there are not enough eligible athletes, update the roster and choose Add everyone who fits again. During recording, tap the team at each baton handoff; the final tap records its finish.</p><div class="tw"><table><thead><tr><th>House</th><th colspan="2">Leg assignments</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="5" class="empty">No relay teams. Recreate this event after adding houses.</td></tr>') + '</tbody></table></div></div>' :
+      (relay ? '<div class="card"><h3>Relay teams and runners</h3><p class="help">' + relayHelp + ' If a house needs more runners, use Add athlete on that row to add an eligible athlete to its roster, then set the lineup. During recording, tap the team at each baton handoff; the final tap records its finish.</p><div class="tw"><table><thead><tr><th>House</th><th colspan="2">Leg assignments</th><th></th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="5" class="empty">No relay teams. Recreate this event after adding houses.</td></tr>') + '</tbody></table></div></div>' :
         '<div class="card"><h3>Athletes in this event</h3><div class="tw"><table><thead><tr><th>Bib</th><th>Name</th><th>House</th><th>Heat</th><th></th></tr></thead><tbody>' + (rows || '<tr><td colspan="5" class="empty">Nobody yet. Add athletes above.</td></tr>') + '</tbody></table></div></div>');
   }
   function relayLineupDialog(entryId, houseId) {
@@ -1126,6 +1133,7 @@
       if (ATH) relayLineupDialog(+el.dataset.id, +el.dataset.house);
       else refreshAth().then(function () { relayLineupDialog(+el.dataset.id, +el.dataset.house); }, fail);
     },
+    addrelayathlete: function (el) { quickAddAthlete(+el.dataset.house, +el.dataset.event); },
     resetclock: function (el) {
       var id = +el.dataset.id, heat = +el.dataset.heat;
       ask('Reset the clock?', 'Use this only if the start was a mistake. If times were already recorded in this heat they will be cleared.', 'Reset clock', true).then(function (y) {
@@ -1167,7 +1175,7 @@
     editphoto: function (el) { editAthletePhoto(+el.dataset.id); },
     deleteath: function (el) { removeAthlete(el.dataset.id); },
     clearroster: clearRoster,
-    quickadd: quickAddAthlete,
+    quickadd: function () { quickAddAthlete(); },
     seedall: autoSeedEvents,
     qacat: function (el) { UI.qacat = el.dataset.k; render(); },
     addcustom: function () { var n = $('#cname').value.trim(); if (!n) return; var type = $('#ctype').value; QA.custom.push([n, type]); QA.names[n] = 1; UI.qacat = type === 'distance' ? 'field' : 'track'; render(); },
@@ -1253,7 +1261,13 @@
   });
   document.addEventListener('submit', function (e) {
     var f = e.target;
-    if (f.id === 'addath') { e.preventDefault(); api('POST', '/api/athletes', { full_name: f.full_name.value, house_id: +f.house_id.value, levels: selectedLevels(f), gender: f.gender.value }).then(function (r) { closeModal(); toast('Added ' + r.athlete.bib); return Promise.all([refreshAth(), load()]); }).then(render, fail); }
+    if (f.id === 'addath') {
+      e.preventDefault();
+      var isRelayRunner = !!f.dataset.relayEvent;
+      api('POST', '/api/athletes', { full_name: f.full_name.value, house_id: +f.house_id.value, levels: selectedLevels(f), gender: f.gender.value })
+        .then(function (r) { closeModal(); toast('Added ' + r.athlete.bib + (isRelayRunner ? ' · set the relay lineup next' : '')); return Promise.all([refreshAth(), load()]); })
+        .then(render, fail);
+    }
     if (f.id === 'adduser') { e.preventDefault(); api('POST', '/api/users', { display_name: f.display_name.value, username: f.username.value, password: f.password.value, role: f.role.value }).then(function () { toast('Account created'); f.reset(); USERS = null; render(); }, fail); }
     if (f.id === 'setf') {
       e.preventDefault(); var pts = f.points.value.split(/[ ,;]+/).filter(Boolean).map(Number);
