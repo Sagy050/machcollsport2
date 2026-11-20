@@ -1,5 +1,5 @@
 /* Staff app: record results by tapping. Plain JavaScript, no build step.
-   Recorders: pick an event, start the clock, tap each athlete as they cross the line (or type a distance).
+   Recorders: tap track athletes in finish order or enter a field distance.
    Admins also get Setup: import athletes, create events, fill entries, heats, team, day settings. */
 (function () {
   'use strict';
@@ -7,12 +7,12 @@
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var ord = function (n) { var v = n % 100; return n + (['th', 'st', 'nd', 'rd'][(v - 20) % 10] || ['th', 'st', 'nd', 'rd'][v] || 'th'); };
-  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  var HEAT_ORDER_STRIDE = 100000;
+  var ORDER_ID_SCALE = 2147483648;
 
-  var ME = null, ST = null, ATH = null, USERS = null, AUDIT = null, ADS = null, ADS_LOADING = false, ADS_ERROR = null, skew = 0;
+  var ME = null, ST = null, ATH = null, USERS = null, AUDIT = null, ADS = null, ADS_LOADING = false, ADS_ERROR = null;
   var UI = { filter: 'live', q: '', heat: {}, last: {}, ahouse: 'all', aq: '', qacat: 'track' };
   var PENDING_ROSTER = null, PENDING_FILE = '', PARSING_ROSTER = false, IMPORTING_ROSTER = false, SEEDING_ROSTER = false, ROSTER_SUMMARY = null;
-  var LOCALSTART = {};                     // clock starts pressed on this phone, until the server confirms them
 
   /* ------------------------------------------------------------------ helpers */
   function toast(msg, cls) {
@@ -34,29 +34,6 @@
       });
   }
   var fail = function (e) { if (e && e.status !== 401) toast(e.message || 'Something went wrong', 'e'); };
-
-  /* ------------------------------------------------------------------ time */
-  function fmtTime(sec) { var cs = Math.floor(sec * 100 + 1e-6), m = Math.floor(cs / 6000), s = (cs % 6000) / 100; return m > 0 ? m + ':' + (s < 10 ? '0' : '') + s.toFixed(2) : s.toFixed(2); }
-  function fmtClock(ms) { if (ms < 0) ms = 0; var cs = Math.floor(ms / 10); return pad(Math.floor(cs / 6000)) + ':' + pad(Math.floor((cs % 6000) / 100)) + '.' + pad(cs % 100); }
-  function parseTime(t) {                    // "12.34", "12,34", "1:02.5"  ->  milliseconds, or null
-    t = String(t).trim().replace(',', '.'); var m = /^(?:(\d{1,2}):)?(\d{1,2}(?:\.\d{1,3})?)$/.exec(t); if (!m) return null;
-    var s = (m[1] ? +m[1] * 60 : 0) + parseFloat(m[2]); return s > 0 ? Math.round(s * 1000) : null;
-  }
-  function syncTime() {                      // how far is this phone's clock from the server's? (best of 4 quick samples)
-    var best = null, n = 0;
-    (function one() {
-      var t0 = Date.now();
-      fetch('/api/time', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
-        var t1 = Date.now(), rtt = t1 - t0, sk = d.now - (t0 + rtt / 2); if (!best || rtt < best.rtt) best = { rtt: rtt, sk: sk };
-        if (++n < 4) setTimeout(one, 80); else skew = best.sk;
-      }).catch(function () { /* keep the old value */ });
-    })();
-  }
-  var serverNow = function () { return Date.now() + skew; };
-  function clockStart(evId, heat) {
-    var ev = evOf(evId), k = evId + '-' + heat;
-    return (ev && ev.heatStarts && ev.heatStarts[heat]) || LOCALSTART[k] || null;
-  }
 
   /* ------------------------------------------------------------------ taps are queued, saved on the phone, and sent in order */
   var Q = []; try { Q = JSON.parse(localStorage.getItem('sd.q') || '[]'); } catch (e) { Q = []; }
@@ -84,25 +61,13 @@
   addEventListener('online', function () { offlineBar(); flush(); load(); }); addEventListener('offline', offlineBar);
 
   /* Show queued taps on screen straight away, before the server has confirmed them. */
-  var numOf = function (ev, e) { if (e._v != null) return e._v; if (!e.performance) return null; if (ev.measure === 'distance') return parseFloat(e.performance); var m = /^(?:(\d+):)?(\d+(?:\.\d+)?)$/.exec(e.performance); return m ? (m[1] ? +m[1] * 60 : 0) + parseFloat(m[2]) : null; };
+  var numOf = function (ev, e) { if (e._v != null) return e._v; if (ev.measure === 'time') return e.recordOrder == null ? null : e.recordOrder; if (!e.performance) return null; return parseFloat(e.performance); };
   function rankLocal(ev) {
     var list = ev.entries.filter(function (e) { return e.status === 'ok' && numOf(ev, e) != null; });
     list.sort(function (a, b) { return ev.measure === 'distance' ? numOf(ev, b) - numOf(ev, a) : numOf(ev, a) - numOf(ev, b); });
     ev.entries.forEach(function (e) { e.position = null; });
     list.forEach(function (e, i) { e.position = i && numOf(ev, e) === numOf(ev, list[i - 1]) ? list[i - 1].position : i + 1; });
     ev.finished = ev.entries.filter(function (x) { return x.position !== null || x.status !== 'ok'; }).length;
-  }
-  function clockEnd(ev, heat) {
-    var started = clockStart(ev.id, heat);
-    if (!started) return null;
-    if (ev.heatEnds && ev.heatEnds[heat]) return ev.heatEnds[heat];
-    var runners = ev.entries.filter(function (e) { return e.heat === heat; });
-    if (!runners.length || runners.some(function (e) { return e.position === null && e.status === 'ok'; })) return null;
-    var lastElapsed = Math.max.apply(null, [0].concat(runners.map(function (e) {
-      var splits = e.relaySplits || [];
-      return Math.max(numOf(ev, e) || 0, 0, ...splits.map(function (s) { return s.cumulativeMs / 1000; }));
-    })));
-    return started + Math.round(lastElapsed * 1000);
   }
   function overlay() {
     if (!ST || !Q.length) return;
@@ -112,21 +77,11 @@
       ST.events.forEach(function (ev) {
         ev.entries.forEach(function (e) {
           if (e.id !== op.id) return; touched[ev.id] = ev;
-          if (op.k === 'time') { e.performance = fmtTime(op.ms / 1000); e._v = op.ms / 1000; e.status = 'ok'; }
+          if (op.k === 'finish') { e.performance = ''; e.recordOrder = op.order; e._v = op.order; e.status = 'ok'; }
+          else if (op.k === 'time') { e.performance = ''; e._v = op.ms / 1000; e.status = 'ok'; }
           else if (op.k === 'mark') { e.performance = (+op.v).toFixed(2); e._v = +op.v; e.status = 'ok'; }
-          else if (op.k === 'relay') {
-            e.relaySplits = e.relaySplits || [];
-            var previous = e.relaySplits.length ? e.relaySplits[e.relaySplits.length - 1].cumulativeMs : 0;
-            if (op.leg === e.relaySplits.length + 1) e.relaySplits.push({ leg: op.leg, cumulativeMs: op.elapsedMs, splitMs: op.elapsedMs - previous });
-            if (op.leg === (ev.relayLegs || 4)) { e.performance = fmtTime(op.elapsedMs / 1000); e._v = op.elapsedMs / 1000; e.status = 'ok'; }
-          }
-          else if (op.k === 'relayUndo') {
-            e.relaySplits = e.relaySplits || [];
-            var removed = e.relaySplits.pop();
-            if (removed && removed.leg === (ev.relayLegs || 4)) { e.performance = ''; e._v = null; e.status = 'ok'; }
-          }
-          else if (op.k === 'clear') { e.performance = ''; e._v = null; e.status = 'ok'; }
-          else if (op.k === 'status') { e.status = op.s; e.performance = op.s === 'ok' ? e.performance : ''; e._v = null; }
+          else if (op.k === 'clear') { e.performance = ''; e.recordOrder = null; e._v = null; e.status = 'ok'; }
+          else if (op.k === 'status') { e.status = op.s; e.performance = op.s === 'ok' ? e.performance : ''; if (op.s !== 'ok') e.recordOrder = null; e._v = null; }
         });
       });
     });
@@ -174,6 +129,10 @@
   var isAdmin = function () { return ME && ME.role === 'admin'; };
   var shortName = function (n) { var p = String(n).trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : p[0]; };
   var label = function (ev) { return ev.level + (ev.gender ? (ev.gender === 'F' ? ' girls' : ' boys') : ''); };
+  var scheduleCompare = function (a, b) {
+    if (a.measure === 'time' || b.measure === 'time') return (a.sort || 0) - (b.sort || 0) || a.id - b.id;
+    return (a.time || '99').localeCompare(b.time || '99') || (a.sort || 0) - (b.sort || 0) || a.id - b.id;
+  };
   var pill = function (s) { return '<span class="pill ' + s + '">' + ({ scheduled: 'Up next', live: 'Live', completed: 'Done', final: 'Final' }[s] || s) + '</span>'; };
 
   /* ------------------------------------------------------------------ modal helpers */
@@ -264,7 +223,7 @@
     $('#profile-avatar').textContent = String(ME.display_name || profileName).trim().split(/\s+/).slice(0, 2).map(function (part) { return part.charAt(0); }).join('').toUpperCase();
     $('#profile-menu summary').setAttribute('aria-label', 'Open ' + profileName + ' profile menu');
     $('#profile-menu summary').setAttribute('title', 'Signed in as ' + profileName);
-    syncTime(); setInterval(syncTime, 60000); offlineBar();
+    offlineBar();
     load().then(function () { connect(); render(); flush(); });
     setInterval(load, 20000);
   }
@@ -301,13 +260,12 @@
     else html = homeView();
     $('#view').innerHTML = html; window.scrollTo(0, y);
     if (r.name === 'setup' && isAdmin()) setupAfter(r);
-    tickClock();
   }
 
   /* ------------------------------------------------------------------ HOME: events to record */
   function homeView() {
     var f = UI.filter, q = UI.q.toLowerCase();
-    var list = ST.events.slice().sort(function (a, b) { var w = { live: 0, scheduled: 1, completed: 2, final: 3 }; return w[a.status] - w[b.status] || (a.time || '99').localeCompare(b.time || '99') || a.id - b.id; });
+    var list = ST.events.slice().sort(function (a, b) { var w = { live: 0, scheduled: 1, completed: 2, final: 3 }; return w[a.status] - w[b.status] || scheduleCompare(a, b); });
     var counts = { live: 0, next: 0, done: 0, all: list.length };
     list.forEach(function (e) { if (e.status === 'live') counts.live++; else if (e.status === 'scheduled') counts.next++; else counts.done++; });
     list = list.filter(function (e) { return (f === 'all' || (f === 'live' && e.status === 'live') || (f === 'next' && e.status === 'scheduled') || (f === 'done' && (e.status === 'completed' || e.status === 'final'))) && (!q || (e.name + ' ' + label(e)).toLowerCase().indexOf(q) > -1); });
@@ -315,14 +273,14 @@
     var body = list.map(function (e) {
       var pct = e.count ? Math.round(e.finished / e.count * 100) : 0;
       var action = e.status === 'live' ? 'Record results' : (e.status === 'scheduled' ? 'Start event' : 'View results');
-      return '<a class="evc ' + e.status + '" href="#/event/' + e.id + '"><span class="evc-head"><span class="event-category">' + esc(eventCategory(e)) + '</span><span class="tm"><svg class="clock-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.4 1.5"></path></svg>' + esc(scheduleTime(e.time)) + '</span>' + pill(e.status) + '</span><span class="evc-main"><b>' + esc(e.name) + '</b><small>' + esc(label(e)) + (e.heats > 1 ? ' · ' + e.heats + ' heats' : '') + '</small></span><span class="evc-progress"><span class="progress-label"><span>Recorded:</span><b>' + e.finished + ' / ' + e.count + ' athletes</b></span><span class="bar"><i style="width:' + pct + '%"></i></span></span><span class="event-action">' + action + '<span aria-hidden="true">→</span></span></a>';
+      return '<a class="evc ' + e.status + '" href="#/event/' + e.id + '"><span class="evc-head"><span class="event-category">' + esc(eventCategory(e)) + '</span>' + (e.measure === 'time' ? '' : '<span class="tm">' + esc(scheduleTime(e.time)) + '</span>') + pill(e.status) + '</span><span class="evc-main"><b>' + esc(e.name) + '</b><small>' + esc(label(e)) + (e.heats > 1 ? ' · ' + e.heats + ' heats' : '') + '</small></span><span class="evc-progress"><span class="progress-label"><span>Recorded:</span><b>' + e.finished + ' / ' + e.count + ' athletes</b></span><span class="bar"><i style="width:' + pct + '%"></i></span></span><span class="event-action">' + action + '<span aria-hidden="true">→</span></span></a>';
     }).join('');
     var empty = !ST.events.length ? '<div class="empty card">No events yet.' + (isAdmin() ? ' <a href="#/setup/events">Set up events</a>' : ' Ask an admin to set them up.') + '</div>' : (!list.length ? '<div class="empty card">Nothing here. Try another filter.</div>' : '');
     var board = list.length ? '<div class="events-grid">' + body + '</div>' : empty;
     if (f === 'live' && !q) {
-      var upcoming = ST.events.filter(function (e) { return e.status === 'scheduled'; }).sort(function (a, b) { return (a.time || '99').localeCompare(b.time || '99') || a.id - b.id; }).slice(0, 3);
+      var upcoming = ST.events.filter(function (e) { return e.status === 'scheduled'; }).sort(scheduleCompare).slice(0, 3);
       var nextUp = '<aside class="next-up"><div class="next-up-heading"><span class="eyebrow"><span></span> ON DECK</span><h2>Coming up</h2><p>Next on the programme</p></div>' +
-        (upcoming.length ? upcoming.map(function (e) { return '<a class="next-event" href="#/event/' + e.id + '"><span class="tm">' + esc(scheduleTime(e.time)) + '</span><span><b>' + esc(e.name) + '</b><small class="next-age">' + esc(label(e)) + '</small></span><span class="next-arrow" aria-hidden="true">›</span></a>'; }).join('') : '<p class="help">No events are waiting in the schedule.</p>') +
+        (upcoming.length ? upcoming.map(function (e) { return '<a class="next-event' + (e.measure === 'time' ? ' no-time' : '') + '" href="#/event/' + e.id + '">' + (e.measure === 'time' ? '' : '<span class="tm">' + esc(scheduleTime(e.time)) + '</span>') + '<span><b>' + esc(e.name) + '</b><small class="next-age">' + esc(label(e)) + '</small></span><span class="next-arrow" aria-hidden="true">›</span></a>'; }).join('') : '<p class="help">No events are waiting in the schedule.</p>') +
         '<a class="next-all" href="#/schedule">View Complete Programme <span aria-hidden="true">→</span></a></aside>';
       board = '<div class="home-board"><div class="events-grid">' + (list.length ? body : empty) + '</div>' + nextUp + '</div>';
     }
@@ -330,12 +288,10 @@
   }
 
   function scheduleView() {
-    var events = ST.events.slice().sort(function (a, b) {
-      return (a.time || '99').localeCompare(b.time || '99') || a.id - b.id;
-    });
+    var events = ST.events.slice().sort(scheduleCompare);
     var items = events.map(function (ev) {
       var action = ev.status === 'scheduled' ? 'Open event' : ev.status === 'live' ? 'Record now' : 'View results';
-      return '<article class="schedule-card programme-card"><div class="programme-time"><span>' + esc(scheduleTime(ev.time)) + '</span></div><div class="schedule-copy"><span class="schedule-kicker">' + (ev.kind === 'relay' ? 'RELAY' : ev.measure === 'distance' ? 'FIELD' : 'TRACK') + ' · ' + esc(label(ev)) + '</span><b>' + esc(ev.name) + '</b><small>' + ev.count + (ev.kind === 'relay' ? ' teams' : ' athletes entered') + '</small></div><div class="programme-status">' + pill(ev.status) + '</div><div class="schedule-actions"><a class="btn sm primary" href="#/event/' + ev.id + '">' + action + '</a>' + (isAdmin() ? '<a class="btn sm" href="#/setup/event/' + ev.id + '">Manage entries</a>' : '') + '</div></article>';
+      return '<article class="schedule-card programme-card' + (ev.measure === 'time' ? ' no-time' : '') + '">' + (ev.measure === 'time' ? '' : '<div class="programme-time"><span>' + esc(scheduleTime(ev.time)) + '</span></div>') + '<div class="schedule-copy"><span class="schedule-kicker">' + (ev.kind === 'relay' ? 'RELAY' : ev.measure === 'distance' ? 'FIELD' : 'TRACK') + ' · ' + esc(label(ev)) + '</span><b>' + esc(ev.name) + '</b><small>' + ev.count + (ev.kind === 'relay' ? ' teams' : ' athletes entered') + '</small></div><div class="programme-status">' + pill(ev.status) + '</div><div class="schedule-actions"><a class="btn sm primary" href="#/event/' + ev.id + '">' + action + '</a>' + (isAdmin() ? '<a class="btn sm" href="#/setup/event/' + ev.id + '">Manage entries</a>' : '') + '</div></article>';
     }).join('');
     return '<section class="programme-view"><header class="programme-heading"><div><p class="eyebrow"><span></span> LIVE RUNNING ORDER</p><h1>Schedule & Entries</h1><p>Every event, division and entry in one place.</p></div><span class="programme-total"><b>' + ST.events.length + '</b><small>events</small></span></header><div class="programme-list">' + (items || '<div class="empty card">No events scheduled yet.' + (isAdmin() ? ' <a href="#/setup/events">Build the programme</a>' : '') + '</div>') + '</div></section>';
   }
@@ -346,73 +302,44 @@
     var heats = ev.heats || 1, heat = UI.heat[id] || 1; if (heat > heats) heat = 1;
     var timed = ev.measure === 'time', locked = ev.status === 'final' && !isAdmin();
     var cur = ev.entries.filter(function (e) { return e.heat === heat; }).sort(function (a, b) { return (a.bib || '').localeCompare(b.bib || '', undefined, { numeric: true }) || a.name.localeCompare(b.name); });
-    var st = timed ? clockStart(id, heat) : null;
-    var end = timed ? clockEnd(ev, heat) : null;
     var head = '<div class="ehead"><a class="btn sm" href="#/">‹ Events</a><div class="grow"><h2>' + esc(ev.name) + '</h2><small>' + esc(label(ev)) + ' · ' + ev.finished + ' of ' + ev.count + ' done</small></div>' + pill(ev.status) + '<button class="btn sm" data-act="evmenu" data-id="' + id + '" aria-label="More">⋯</button></div>';
     var heatBar = heats > 1 ? '<div class="heats">' + Array.apply(null, Array(heats)).map(function (_, i) { var n = i + 1, d = ev.entries.filter(function (e) { return e.heat === n && (e.position !== null || e.status !== 'ok'); }).length, t = ev.entries.filter(function (e) { return e.heat === n; }).length; return '<button data-act="heat" data-n="' + n + '" data-id="' + id + '" aria-pressed="' + (n === heat) + '">Heat ' + n + ' · ' + d + '/' + t + '</button>'; }).join('') + '</div>' : '';
-    var clock = timed ? '<div class="clock ' + (st && !end ? 'run' : '') + '"><div class="t" id="clk" data-ev="' + id + '" data-heat="' + heat + '">' + fmtClock(st ? (end || serverNow()) - st : 0) + '</div>' +
-      (st ? '<button class="btn" data-act="resetclock" data-id="' + id + '" data-heat="' + heat + '"' + (locked ? ' disabled' : '') + '>Reset clock</button>' : '<button class="btn primary big" data-act="startclock" data-id="' + id + '" data-heat="' + heat + '"' + (locked ? ' disabled' : '') + '>▶ Start clock</button>') + '</div>' : '<p class="help">Tap an athlete, type the distance on the keypad, then Save. Longest wins.</p>';
+    var instructions = timed ? '<p class="help">Tap finishers in order for each heat. After all heats, adjust the combined event order below.</p>' : '<p class="help">Tap an athlete, enter the distance, then Save. Longest wins.</p>';
     var tiles = cur.length ? '<div class="tiles">' + cur.map(function (e) { return tile(ev, e); }).join('') + '</div>' : '<div class="empty card">No athletes in this ' + (heats > 1 ? 'heat' : 'event') + '.' + (isAdmin() ? ' <a href="#/setup/event/' + id + '">Add athletes</a>' : ' Ask an admin to add them.') + '</div>';
     var placed = ev.entries.filter(function (e) { return e.position !== null; }).sort(function (a, b) { return a.position - b.position; });
     var out = ev.entries.filter(function (e) { return e.status !== 'ok'; });
     var rows = placed.map(function (e, i) {
-      var h = houseOf(e.house_id);
-      return '<div class="ord house-' + houseKey(h) + '"><span class="p">' + e.position + '</span><span><span class="dot" style="background:' + esc(houseColor(h)) + '"></span><b>' + esc(e.bib) + '</b> ' + esc(shortName(e.name)) + (heats > 1 ? ' <small>H' + e.heat + '</small>' : '') + '</span><span class="t">' + esc(e.performance) + '</span><span class="btns">' +
-        (ev.kind !== 'relay' && i > 0 ? '<button data-act="swap" data-a="' + e.id + '" data-b="' + placed[i - 1].id + '" aria-label="Move up" title="Swap with the one above">↑</button>' : '') + (ev.kind !== 'relay' && i < placed.length - 1 ? '<button data-act="swap" data-a="' + e.id + '" data-b="' + placed[i + 1].id + '" aria-label="Move down" title="Swap with the one below">↓</button>' : '') + '<button data-act="entrymenu" data-id="' + e.id + '" aria-label="Options">⋯</button></span></div>';
+      var h = houseOf(e.house_id), canSwap = timed || ev.kind !== 'relay';
+      return '<div class="ord house-' + houseKey(h) + '"><span class="p">' + e.position + '</span><span><span class="dot" style="background:' + esc(houseColor(h)) + '"></span><b>' + esc(e.bib) + '</b> ' + esc(shortName(e.name)) + (heats > 1 ? ' <small>H' + e.heat + '</small>' : '') + '</span>' + (timed ? '' : '<span class="t">' + esc(e.performance) + '</span>') + '<span class="btns">' +
+        (canSwap && i > 0 ? '<button data-act="swap" data-a="' + e.id + '" data-b="' + placed[i - 1].id + '" aria-label="Move up" title="Swap with the one above">↑</button>' : '') + (canSwap && i < placed.length - 1 ? '<button data-act="swap" data-a="' + e.id + '" data-b="' + placed[i + 1].id + '" aria-label="Move down" title="Swap with the one below">↓</button>' : '') + '<button data-act="entrymenu" data-id="' + e.id + '" aria-label="Options">⋯</button></span></div>';
     }).join('');
     var order = '<div class="sub">Finishing order</div>' + (placed.length ? '<div class="order">' + rows + '</div>' : '<div class="help">Results appear here as you tap. Use ↑ ↓ to fix the order if two were swapped.</div>') + (out.length ? '<p class="help">Not running: ' + out.map(function (e) { return esc(e.bib + ' ' + shortName(e.name)) + ' (' + e.status.toUpperCase() + ')'; }).join(', ') + '</p>' : '');
     var dock = locked ? '<div class="dock"><span class="bad">This event is finalised. Ask an admin to reopen it.</span></div>' : '<div class="dock"><button class="btn" data-act="undo" data-id="' + id + '">↶ Undo last</button>' + (ev.status === 'completed' || ev.status === 'final' ? '<button class="btn" data-act="reopen" data-id="' + id + '">Reopen event</button>' : '<button class="btn primary" data-act="finish" data-id="' + id + '">Finish event ✓</button>') + '</div>';
-    return head + heatBar + clock + tiles + order + dock;
+    return head + heatBar + instructions + tiles + order + dock;
   }
   function tile(ev, e) {
     var h = houseOf(e.house_id), state = e.status !== 'ok' ? 'out' : e.position !== null ? 'done' : 'wait', rel = ev.kind === 'relay';
     var members = (e.relayMembers || []).slice().sort(function (a, b) { return a.leg - b.leg; });
-    var relayLeg = (e.relaySplits || []).length + 1;
-    var runner = members[relayLeg - 1];
-    var relayDone = (e.relaySplits || []).map(function (s) { return 'L' + s.leg + ' ' + fmtTime(s.splitMs / 1000); }).join(' · ');
     var relayLegs = ev.relayLegs || 4;
     var marker = '<span class="dot" style="background:' + esc(houseColor(h)) + '" aria-hidden="true"></span>';
     var inner = (rel ? '<span class="bib">' + marker + esc(h.name) + '</span><span class="nm">' + esc(ev.name) + ' team</span>' +
-      (members.length === relayLegs ? '<span class="hn">' + (state === 'done' || state === 'out' ? 'Runners: ' : 'Next: Leg ' + relayLeg + ' · ') + esc(state === 'done' || state === 'out' ? members.map(function (m) { return m.name; }).join(', ') : runner.name) + '</span>' : '<span class="hn">Lineup not set · ' + members.length + '/' + relayLegs + '</span>') +
-      (relayDone ? '<span class="relay-splits">' + esc(relayDone) + '</span>' : '') :
+      (members.length === relayLegs ? '<span class="hn">Runners: ' + esc(members.map(function (m) { return m.name; }).join(', ')) + '</span>' : '<span class="hn">Lineup not set · ' + members.length + '/' + relayLegs + '</span>') :
       '<span class="bib">' + esc(e.bib) + '</span><span class="nm">' + marker + esc(shortName(e.name)) + '</span><span class="hn">' + esc(h.name) + '</span>') +
-      (state === 'done' ? '<span class="res">' + esc(e.performance) + '</span><span class="place">' + ord(e.position) + '</span>' : state === 'out' ? '<span class="res">' + esc(e.status.toUpperCase()) + '</span>' : '');
-    return '<div class="tilew"><button class="tile ' + state + ' house-' + houseKey(h) + '" style="--c:' + esc(houseColor(h)) + '" data-act="tap" data-id="' + e.id + '"' + (rel && state === 'wait' && members.length !== relayLegs ? ' disabled' : '') + ' aria-label="' + esc((rel ? h.name + ' relay team' : e.bib + ' ' + e.name) + (state === 'done' ? ', ' + ord(e.position) + ', ' + e.performance : '')) + '">' + inner + '</button><button class="more" data-act="entrymenu" data-id="' + e.id + '" aria-label="Options for ' + esc(e.name) + '">⋯</button></div>';
-  }
-  var raf = 0;
-  function tickClock() {
-    cancelAnimationFrame(raf);
-    var el = $('#clk'); if (!el) return;
-    (function f() {
-      var c = $('#clk'); if (!c) return;
-      var ev = evOf(+c.dataset.ev), heat = +c.dataset.heat, st = clockStart(+c.dataset.ev, heat), end = ev && clockEnd(ev, heat);
-      c.textContent = fmtClock(st ? (end || serverNow()) - st : 0);
-      raf = requestAnimationFrame(f);
-    })();
+      (state === 'done' ? (ev.measure === 'time' ? '' : '<span class="res">' + esc(e.performance) + '</span>') + '<span class="place">' + ord(e.position) + '</span>' : state === 'out' ? '<span class="res">' + esc(e.status.toUpperCase()) + '</span>' : '');
+    return '<div class="tilew"><button class="tile ' + state + ' house-' + houseKey(h) + '" style="--c:' + esc(houseColor(h)) + '" data-act="tap" data-id="' + e.id + '"' + (rel && state === 'wait' && members.length !== relayLegs ? ' disabled' : '') + ' aria-label="' + esc((rel ? h.name + ' relay team' : e.bib + ' ' + e.name) + (state === 'done' ? ', ' + ord(e.position) + (ev.measure === 'time' ? '' : ', ' + e.performance) : '')) + '">' + inner + '</button><button class="more" data-act="entrymenu" data-id="' + e.id + '" aria-label="Options for ' + esc(e.name) + '">⋯</button></div>';
   }
 
   function tapEntry(id) {
     var f = entryOf(id); if (!f) return; var ev = f.ev, e = f.e;
     if (ev.status === 'final' && !isAdmin()) return toast('This event is finalised', 'e');
     if (e.status !== 'ok' || e.position !== null) return entryMenu(id);               // already has a result: offer fixes instead of a second tap
-    if (ev.kind === 'relay') {
-      if ((e.relayMembers || []).length !== (ev.relayLegs || 4)) return toast('Ask an admin to set the relay lineup', 'e');
-      var start = clockStart(ev.id, e.heat); if (!start) return toast('Start the clock first');
-      var leg = (e.relaySplits || []).length + 1;
-      if (leg > (ev.relayLegs || 4)) return toast('All relay legs are already recorded', 'e');
-      var elapsedMs = Math.max(1, Math.round(serverNow() - start));
-      (UI.last[ev.id] = UI.last[ev.id] || []).push(e.id);
-      buzz(30);
-      enqueue('/api/entries/' + e.id + '/relay-split', { leg: leg, elapsedMs: elapsedMs }, { k: 'relay', id: e.id, leg: leg, elapsedMs: elapsedMs });
-      overlay(); render();
-      return;
-    }
+    if (ev.kind === 'relay' && (e.relayMembers || []).length !== (ev.relayLegs || 4)) return toast('Ask an admin to set the relay lineup', 'e');
     if (ev.measure === 'distance') return keypad(e, ev);
-    var st = clockStart(ev.id, e.heat); if (!st) return toast('Start the clock first');
-    var ms = Math.max(1, Math.round(serverNow() - st));
+    var recordedInHeat = ev.entries.filter(function (entry) { return entry.heat === e.heat && entry.status === 'ok' && numOf(ev, entry) !== null; }).length;
+    var order = e.heat * HEAT_ORDER_STRIDE + recordedInHeat + 1 + e.id / ORDER_ID_SCALE;
     (UI.last[ev.id] = UI.last[ev.id] || []).push(e.id);
     buzz(30);
-    enqueue('/api/entries/' + e.id + '/time', { ms: ms }, { k: 'time', id: e.id, ms: ms });
+    enqueue('/api/entries/' + e.id + '/finish', {}, { k: 'finish', id: e.id, order: order });
     overlay(); render();
     var t = $('.tile[data-id="' + e.id + '"]'); if (t) t.classList.add('flash');
   }
@@ -438,21 +365,12 @@
       d.addEventListener('close', function () { keypadKeys = null; }, { once: true });
     });
   }
-  function manualTime(e, ev) {
-    modal(e.bib + ' ' + shortName(e.name), '<label>Time (for example 12.34 or 1:02.50)<input id="mt" inputmode="decimal" autocomplete="off" placeholder="12.34"></label><div class="row"><button class="btn primary grow" data-save>Save time</button></div>', function (d) {
-      setTimeout(function () { $('#mt', d).focus(); }, 60);
-      $('[data-save]', d).onclick = function () {
-        var ms = parseTime($('#mt', d).value); if (!ms) return toast('Type a time like 12.34', 'e');
-        enqueue('/api/entries/' + e.id + '/time', { ms: ms }, { k: 'time', id: e.id, ms: ms }); overlay(); closeModal(); render();
-      };
-    });
-  }
   function entryMenu(id) {
     var f = entryOf(id); if (!f) return; var ev = f.ev, e = f.e, has = e.position !== null || e.status !== 'ok', h = houseOf(e.house_id), heats = (ev.heats || 1) + 1;
     var opt = function (a, t, cls) { return '<button class="opt ' + (cls || '') + '" data-act="' + a + '" data-id="' + id + '">' + t + '</button>'; };
     var hb = '<div class="chips" style="margin:0">' + Array.apply(null, Array(Math.min(heats, 30))).map(function (_, i) { return '<button data-act="moveheat" data-id="' + id + '" data-n="' + (i + 1) + '" aria-pressed="' + (e.heat === i + 1) + '">Heat ' + (i + 1) + '</button>'; }).join('') + '</div>';
-    modal((ev.kind === 'relay' ? h.name + ' team' : e.bib + ' ' + shortName(e.name)), '<p class="help" style="margin:0"><span class="dot" style="background:' + esc(houseColor(h)) + '"></span>' + esc(h.name) + (e.performance ? ' · ' + esc(e.performance) + (e.position ? ' · ' + ord(e.position) : '') : '') + '</p>' +
-      (ev.kind === 'relay' ? '' : opt('manual', ev.measure === 'time' ? 'Enter a time by hand' : 'Enter a distance')) + opt('setstatus-dns', 'Did not start (DNS)') + opt('setstatus-dnf', 'Did not finish (DNF)') + opt('setstatus-dq', 'Disqualified (DQ)') + (has ? opt('clearresult', 'Clear this result and relay splits', 'bad') : '') +
+    modal((ev.kind === 'relay' ? h.name + ' team' : e.bib + ' ' + shortName(e.name)), '<p class="help" style="margin:0"><span class="dot" style="background:' + esc(houseColor(h)) + '"></span>' + esc(h.name) + (e.position !== null ? ' · ' + ord(e.position) : '') + '</p>' +
+      (ev.kind === 'relay' || ev.measure === 'time' ? '' : opt('manual', 'Enter a distance')) + opt('setstatus-dns', 'Did not start (DNS)') + opt('setstatus-dnf', 'Did not finish (DNF)') + opt('setstatus-dq', 'Disqualified (DQ)') + (has ? opt('clearresult', 'Clear this result', 'bad') : '') +
       '<div class="help" style="margin:4px 0 0">Move to heat</div>' + hb + (isAdmin() ? opt('removeentry', 'Remove from this event', 'bad') : ''));
   }
 
@@ -987,14 +905,14 @@
     var levels = LEVELS.filter(function (l) { return QA.levels[l]; }).length, genders = Object.keys(QA.genders).filter(function (g) { return QA.genders[g]; }).length;
     var quick = '<div class="card command-card"><div class="command-heading"><div><p class="eyebrow">PROGRAMME BUILDER</p><h2>Create events</h2><p>Pick disciplines and divisions. Eligible athletes can be entered automatically.</p></div><span class="selection-summary"><b>' + selected + '</b><small>event types selected</small></span></div>' +
       '<div class="category-tabs" role="tablist" aria-label="Event category">' + tabs + '</div><div class="event-choice-grid">' + (names || '<p class="empty">No events in this category yet.</p>') + '</div>' +
-      '<div class="custom-event-row"><input id="cname" placeholder="Add a custom event, e.g. 300m hurdles" aria-label="Custom event name"><select id="ctype" aria-label="Custom event type"><option value="time">Track · timed</option><option value="distance">Field · distance</option></select><button class="btn sm" data-act="addcustom">Add event type</button></div>' +
+      '<div class="custom-event-row"><input id="cname" placeholder="Add a custom event, e.g. 300m hurdles" aria-label="Custom event name"><select id="ctype" aria-label="Custom event type"><option value="time">Track · finish order</option><option value="distance">Field · distance</option></select><button class="btn sm" data-act="addcustom">Add event type</button></div>' +
       '<div class="division-grid"><section><p class="micro-label">AGE GROUPS</p><div class="selection-row">' + LEVELS.map(function (l) { return option('level:' + l, l, !!QA.levels[l]); }).join('') + '</div></section><section><p class="micro-label">DIVISIONS</p><div class="selection-row">' + option('gender:F', 'Girls', !!QA.genders.F) + option('gender:M', 'Boys', !!QA.genders.M) + '</div></section></div>' +
       '<div class="autofill-toggle">' + option('fill', 'Auto-enter every eligible athlete from the roster', QA.fill) + '<small>Relay lineups use eligible athletes from each house, ordered by bib.</small></div>' +
       '<div class="batch-dock"><span><b>' + selected + ' event types</b><small>' + levels + ' age groups · ' + genders + ' divisions</small></span><button class="btn primary big" data-act="createevents"' + (selected && (levels || allNames.some(function (s) { return QA.names[s[0]] && category(s) === 'relays'; })) ? '' : ' disabled') + '>Generate selected events <span aria-hidden="true">→</span></button></div></div>';
-    var list = ST.events.slice().sort(function (a, b) { return (a.time || '99').localeCompare(b.time || '99') || a.id - b.id; }).map(function (e) {
-      return '<article class="schedule-card"><label class="schedule-time"><span>START</span><input type="time" value="' + esc(e.time) + '" data-change="evtime" data-id="' + e.id + '" aria-label="Start time for ' + esc(e.name) + '"></label><div class="schedule-copy"><span class="schedule-kicker">' + (e.kind === 'relay' ? 'RELAY' : e.measure === 'distance' ? 'FIELD' : 'TRACK') + ' · ' + esc(label(e)) + '</span><b>' + esc(e.name) + '</b><small>' + e.count + (e.kind === 'relay' ? ' teams' : ' athletes') + ' · ' + (e.measure === 'time' ? 'timed' : 'distance') + '</small></div><div class="schedule-actions"><a class="btn sm" href="#/setup/event/' + e.id + '">Manage <span aria-hidden="true">→</span></a><button class="btn sm icon-btn" data-act="evmenu" data-id="' + e.id + '" aria-label="More actions for ' + esc(e.name) + '">⋯</button></div></article>';
+    var list = ST.events.slice().sort(scheduleCompare).map(function (e) {
+      return '<article class="schedule-card' + (e.measure === 'time' ? ' no-time' : '') + '">' + (e.measure === 'time' ? '' : '<label class="schedule-time"><span>START</span><input type="time" value="' + esc(e.time) + '" data-change="evtime" data-id="' + e.id + '" aria-label="Start time for ' + esc(e.name) + '"></label>') + '<div class="schedule-copy"><span class="schedule-kicker">' + (e.kind === 'relay' ? 'RELAY' : e.measure === 'distance' ? 'FIELD' : 'TRACK') + ' · ' + esc(label(e)) + '</span><b>' + esc(e.name) + '</b><small>' + e.count + (e.kind === 'relay' ? ' teams' : ' athletes') + ' · ' + (e.measure === 'time' ? 'finish order' : 'distance') + '</small></div><div class="schedule-actions"><a class="btn sm" href="#/setup/event/' + e.id + '">Manage <span aria-hidden="true">→</span></a><button class="btn sm icon-btn" data-act="evmenu" data-id="' + e.id + '" aria-label="More actions for ' + esc(e.name) + '">⋯</button></div></article>';
     }).join('');
-    return quick + '<div class="card schedule-panel"><div class="schedule-heading"><div><p class="eyebrow">LIVE RUNNING ORDER</p><h2>Event schedule <span>' + ST.events.length + '</span></h2></div><small>Times update across the public and staff screens.</small></div><div class="schedule-list">' + (list || '<div class="empty">No events yet.</div>') + '</div></div>';
+    return quick + '<div class="card schedule-panel"><div class="schedule-heading"><div><p class="eyebrow">LIVE RUNNING ORDER</p><h2>Event schedule <span>' + ST.events.length + '</span></h2></div><small>Field start times appear here; track events follow recorded finish order.</small></div><div class="schedule-list">' + (list || '<div class="empty">No events yet.</div>') + '</div></div>';
   }
   function createEvents() {
     var items = STD.concat(QA.custom).filter(function (s) { return QA.names[s[0]]; }).map(function (s) { return { name: s[0], kind: s[1] === 'relay' ? 'relay' : 'individual', measure: s[1] === 'distance' ? 'distance' : 'time' }; });
@@ -1071,8 +989,11 @@
   }
   function editEvent(id) {
     var ev = evOf(id);
-    modal('Edit event', '<form id="edev" class="formrow" style="grid-template-columns:1fr"><label>Name<input name="name" value="' + esc(ev.name) + '" required></label><label>Age group<select name="level">' + LEVELS.concat(['Mixed']).map(function (l) { return '<option' + (ev.level === l ? ' selected' : '') + '>' + l + '</option>'; }).join('') + '</select></label><label>Gender<select name="gender"><option value="">Mixed</option><option value="F"' + (ev.gender === 'F' ? ' selected' : '') + '>Girls</option><option value="M"' + (ev.gender === 'M' ? ' selected' : '') + '>Boys</option></select></label><label>Measured in<select name="measure"><option value="time"' + (ev.measure === 'time' ? ' selected' : '') + '>Time (stopwatch)</option><option value="distance"' + (ev.measure === 'distance' ? ' selected' : '') + '>Distance (metres)</option></select></label><label>Start time<input name="sched_time" type="time" value="' + esc(ev.time) + '"></label><button class="btn primary" type="submit">Save changes</button></form>', function (d) {
+    modal('Edit event', '<form id="edev" class="formrow" style="grid-template-columns:1fr"><label>Name<input name="name" value="' + esc(ev.name) + '" required></label><label>Age group<select name="level">' + LEVELS.concat(['Mixed']).map(function (l) { return '<option' + (ev.level === l ? ' selected' : '') + '>' + l + '</option>'; }).join('') + '</select></label><label>Gender<select name="gender"><option value="">Mixed</option><option value="F"' + (ev.gender === 'F' ? ' selected' : '') + '>Girls</option><option value="M"' + (ev.gender === 'M' ? ' selected' : '') + '>Boys</option></select></label><label>Event results<select name="measure"><option value="time"' + (ev.measure === 'time' ? ' selected' : '') + '>Track finish order</option><option value="distance"' + (ev.measure === 'distance' ? ' selected' : '') + '>Field distance</option></select></label><label data-start-time' + (ev.measure === 'time' ? ' hidden' : '') + '>Field start time<input name="sched_time" type="time" value="' + esc(ev.time) + '"></label><button class="btn primary" type="submit">Save changes</button></form>', function (d) {
       var f = $('#edev', d);
+      var measure = f.elements.namedItem('measure');
+      var startTime = f.querySelector('[data-start-time]');
+      measure.addEventListener('change', function () { startTime.hidden = measure.value === 'time'; });
       f.onsubmit = function (e) {
         e.preventDefault();
         var save = f.querySelector('button[type="submit"]');
@@ -1081,7 +1002,7 @@
           level: f.elements.namedItem('level').value,
           gender: f.elements.namedItem('gender').value,
           measure: f.elements.namedItem('measure').value,
-          sched_time: f.elements.namedItem('sched_time').value
+          sched_time: startTime.hidden ? '' : f.elements.namedItem('sched_time').value
         };
         save.disabled = true; save.textContent = 'Saving…';
         api('PATCH', '/api/events/' + id, payload)
@@ -1111,8 +1032,19 @@
       '<p class="help">Changing the points re-scores every event straight away. DNS, DNF and DQ always score 0.</p><div class="palette-lock"><b>House identity palette</b><div class="palette-swatches">' + ST.houses.map(function (h) { return '<span class="house-' + houseKey(h) + '"><i></i>' + esc(h.name) + '</span>'; }).join('') + '</div><small>These broadcast colors stay consistent across staff, live standings and reports.</small></div></div>';
     var fin = '<div class="card"><h2>' + (s.finalised ? 'The day is finalised' : 'Finish the day') + '</h2><p class="help">' + (s.finalised ? 'Results are locked for recorders. The printable report shows FINAL.' : 'When every event is done, finalise the day. Recorders can no longer change results; you still can.') + '</p><div class="row">' + (s.finalised ? '<button class="btn" data-act="reopenday">Reopen the day</button>' : '<button class="btn primary" data-act="finaliseday">Finalise the day</button>') + '<a class="btn" href="/report" target="_blank" rel="noopener">Printable report</a><a class="btn" href="/api/export/results.csv">All results (CSV)</a><a class="btn" href="/api/admin/backup">Download a backup</a></div></div>';
     var danger = '<div class="card"><h3>Start again</h3><p class="help">A safety copy is saved automatically before anything is deleted.</p><div class="row"><button class="btn" data-act="reset" data-scope="results">Clear all results (keep athletes and events)</button><button class="btn danger" data-act="reset" data-scope="all">Delete everything</button></div></div>';
-    var log = '<div class="card"><h3>Recent activity</h3>' + (AUDIT ? '<div class="tw"><table><tbody>' + AUDIT.map(function (a) { return '<tr><td style="white-space:nowrap"><small>' + new Date(a.ts).toLocaleTimeString() + '</small></td><td>' + esc(a.username || '–') + '</td><td>' + esc(a.action) + '</td><td><small>' + esc(String(a.detail || '').slice(0, 90)) + '</small></td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">Loading…</div>') + '</div>';
+    var log = '<div class="card"><h3>Recent activity</h3>' + (AUDIT ? '<div class="tw"><table><tbody>' + AUDIT.map(function (a) { return '<tr><td style="white-space:nowrap"><small>' + new Date(a.ts).toLocaleTimeString() + '</small></td><td>' + esc(a.username || '–') + '</td><td>' + esc(a.action) + '</td><td><small>' + esc(auditDetail(a)) + '</small></td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">Loading…</div>') + '</div>';
     return settings + fin + danger + log;
+  }
+  function auditDetail(a) {
+    if (a.action === 'login' || a.action === 'login.fail' || a.action === 'bootstrap.fail') {
+      try {
+        var detail = JSON.parse(a.detail || '{}');
+        return detail.device || 'Device not recorded for this login';
+      } catch (_) {
+        return 'Device not recorded for this login';
+      }
+    }
+    return String(a.detail || '').slice(0, 90);
   }
 
   /* ------------------------------------------------------------------ actions (one click handler for everything) */
@@ -1121,37 +1053,21 @@
     heat: function (el) { UI.heat[el.dataset.id] = +el.dataset.n; render(); },
     tap: function (el) { tapEntry(+el.dataset.id); },
     entrymenu: function (el) { entryMenu(+el.dataset.id); },
-    manual: function (el) { var f = entryOf(el.dataset.id); closeModal(); if (f.ev.measure === 'time') manualTime(f.e, f.ev); else keypad(f.e, f.ev); },
+    manual: function (el) { var f = entryOf(el.dataset.id); closeModal(); keypad(f.e, f.ev); },
     clearresult: function (el) { var id = +el.dataset.id; enqueue('/api/entries/' + id + '/clear', {}, { k: 'clear', id: id }); overlay(); closeModal(); render(); },
     moveheat: function (el) { api('PATCH', '/api/entries/' + el.dataset.id, { heat: +el.dataset.n }).then(function () { closeModal(); return load(); }).then(render, fail); },
     removeentry: function (el) { var id = +el.dataset.id; ask('Remove from this event?', 'Any result they have in this event is deleted.', 'Remove', true).then(function (y) { if (y) api('DELETE', '/api/entries/' + id).then(function () { closeModal(); return Promise.all([load(), refreshAth()]); }).then(render, fail); }); },
-    startclock: function (el) {
-      var id = +el.dataset.id, heat = +el.dataset.heat, at = Math.round(serverNow()); LOCALSTART[id + '-' + heat] = at; buzz(60); render();
-      api('POST', '/api/events/' + id + '/start', { heat: heat, at: at }).then(function (r) { LOCALSTART[id + '-' + heat] = r.started_at; return load(); }, function (e) { delete LOCALSTART[id + '-' + heat]; render(); fail(e); });
-    },
     relaylineup: function (el) {
       if (ATH) relayLineupDialog(+el.dataset.id, +el.dataset.house);
       else refreshAth().then(function () { relayLineupDialog(+el.dataset.id, +el.dataset.house); }, fail);
     },
     addrelayathlete: function (el) { quickAddAthlete(+el.dataset.house, +el.dataset.event); },
-    resetclock: function (el) {
-      var id = +el.dataset.id, heat = +el.dataset.heat;
-      ask('Reset the clock?', 'Use this only if the start was a mistake. If times were already recorded in this heat they will be cleared.', 'Reset clock', true).then(function (y) {
-        if (!y) return;
-        api('POST', '/api/events/' + id + '/reset-clock', { heat: heat, force: true }).then(function () { delete LOCALSTART[id + '-' + heat]; return load(); }).then(render, fail);
-      });
-    },
     swap: function (el) { var f = entryOf(el.dataset.a); api('POST', '/api/events/' + f.ev.id + '/swap', { a: +el.dataset.a, b: +el.dataset.b }).then(load, fail); },
     undo: function (el) {
       var ev = evOf(+el.dataset.id), stack = UI.last[ev.id] || [], pick = null;
-      while (stack.length && !pick) { var c = stack.pop(), en = ev.entries.filter(function (x) { return x.id === c; })[0]; if (en && ((en.relaySplits || []).length || en.position !== null || en.status !== 'ok')) pick = en; }
-      if (!pick) { var l = ev.entries.filter(function (x) { return (x.relaySplits || []).length || x.position !== null; }).sort(function (a, b) { return b.at - a.at; })[0]; pick = l; }
+      while (stack.length && !pick) { var c = stack.pop(), en = ev.entries.filter(function (x) { return x.id === c; })[0]; if (en && (en.position !== null || en.status !== 'ok')) pick = en; }
+      if (!pick) { var l = ev.entries.filter(function (x) { return x.position !== null; }).sort(function (a, b) { return b.at - a.at; })[0]; pick = l; }
       if (!pick) return toast('Nothing to undo');
-      if (ev.kind === 'relay' && (pick.relaySplits || []).length) {
-        var leg = pick.relaySplits[pick.relaySplits.length - 1].leg;
-        enqueue('/api/entries/' + pick.id + '/relay-split/undo', {}, { k: 'relayUndo', id: pick.id });
-        overlay(); render(); toast('Undid relay leg ' + leg); return;
-      }
       enqueue('/api/entries/' + pick.id + '/clear', {}, { k: 'clear', id: pick.id }); overlay(); render(); toast('Undid ' + pick.bib + ' ' + shortName(pick.name));
     },
     finish: function (el) {
@@ -1163,8 +1079,8 @@
     },
     reopen: function (el) { api('POST', '/api/events/' + el.dataset.id + '/reopen', {}).then(load, fail); },
     evmenu: function (el) {
-      var id = +el.dataset.id, ev = evOf(id), heat = UI.heat[id] || 1;
-      modal(ev.name, (ev.measure === 'time' && clockStart(id, heat) ? '<button class="opt bad" data-act="resetclock" data-id="' + id + '" data-heat="' + heat + '">Reset the clock (heat ' + heat + ')</button>' : '') + (ev.status === 'completed' || ev.status === 'final' ? '<button class="opt" data-act="reopen" data-id="' + id + '">Reopen this event</button>' : '<button class="opt" data-act="finish" data-id="' + id + '">Finish this event</button>') + (isAdmin() ? '<a class="opt" href="#/setup/event/' + id + '" data-close>Manage athletes and heats</a>' : '') + '<a class="opt" href="/api/export/results.csv">Download all results (CSV)</a>');
+      var id = +el.dataset.id, ev = evOf(id);
+      modal(ev.name, (ev.status === 'completed' || ev.status === 'final' ? '<button class="opt" data-act="reopen" data-id="' + id + '">Reopen this event</button>' : '<button class="opt" data-act="finish" data-id="' + id + '">Finish this event</button>') + (isAdmin() ? '<a class="opt" href="#/setup/event/' + id + '" data-close>Manage athletes and heats</a>' : '') + '<a class="opt" href="/api/export/results.csv">Download all results (CSV)</a>');
     },
     /* setup */
     import: importAthletes,

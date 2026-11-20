@@ -1,7 +1,7 @@
 /**
  * HTTP layer for /api/* (server only): same endpoints and rules as the original Node server.
  *   Public  (no login)  GET  /api/state  /api/results.csv  /api/time
- *   Staff   (recorder)  start the clock, tap finishers, enter distances, finish events
+ *   Staff   (recorder)  record finish order, enter distances, finish events
  *   Admin               athletes, events and entries, users, settings, finalise, reset, backup
  * Live updates come from Lovable Cloud realtime (see public/js/live.js), not from this server.
  */
@@ -70,12 +70,22 @@ route("GET", "/api/me", "public", ({ user }) =>
 );
 route("GET", "/api/bootstrap/status", "public", async () => json(await users.bootstrapStatus()));
 route("POST", "/api/bootstrap", "public", async ({ request, body }) => {
-  const result = await users.bootstrapAdmin(body, clientIp(request));
+  const result = await users.bootstrapAdmin(
+    body,
+    clientIp(request),
+    request.headers.get("user-agent"),
+    request.headers.get("sec-ch-ua-model"),
+  );
   return json({ user: result.user }, 200, { "Set-Cookie": users.cookieHeader(result.token, Math.floor(users.SESSION_MS / 1000)) });
 });
 
 route("POST", "/api/login", "public", async ({ request, body }) => {
-  const r = await users.login(body, clientIp(request));
+  const r = await users.login(
+    body,
+    clientIp(request),
+    request.headers.get("user-agent"),
+    request.headers.get("sec-ch-ua-model"),
+  );
   return json({ user: r.user }, 200, { "Set-Cookie": users.cookieHeader(r.token, Math.floor(users.SESSION_MS / 1000)) });
 });
 route("POST", "/api/logout", "public", async ({ user }) => {
@@ -102,6 +112,9 @@ route("POST", "/api/events/:id/swap", "staff", async ({ user, body }) => json(aw
 route("POST", "/api/events/:id/entries", "staff", async ({ user, params, body }) => json(await store.addEntries(user, id(params), body), 201));
 route("POST", "/api/events/:id/relay-lineup", "admin", async ({ user, params, body }) =>
   json(await store.setRelayLineup(user, id(params), body.house_id, body.athlete_ids)),
+);
+route("POST", "/api/entries/:id/finish", "staff", async ({ user, params }) =>
+  json({ entry: await store.recordFinish(user, id(params)) }),
 );
 route("POST", "/api/entries/:id/time", "staff", async ({ user, params, body }) => json({ entry: await store.recordTime(user, id(params), body.ms) }));
 route("POST", "/api/entries/:id/relay-split", "staff", async ({ user, params, body }) =>

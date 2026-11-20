@@ -140,14 +140,16 @@
       return (fStatus === 'all' || (fStatus === 'live' && e.status === 'live') || (fStatus === 'upcoming' && e.status === 'scheduled') || (fStatus === 'done' && d)) && (fLevel === 'all' || e.level === fLevel);
     });
     $('evs').innerHTML = shown.length ? shown.map(function (e) {
-      var rows = e.entries.length ? '<table><tr><th>Pos</th><th>' + (e.kind === 'relay' ? 'Team' : 'Athlete') + '</th><th>House</th><th>' + (e.measure === 'time' ? 'Time' : e.measure === 'distance' ? 'Distance' : e.measure === 'score' ? 'Score' : 'Result') + '</th><th>Pts</th></tr>' +
+      var metricHeader = e.measure === 'time' ? '' : '<th>' + (e.measure === 'distance' ? 'Distance' : e.measure === 'score' ? 'Score' : 'Result') + '</th>';
+      var timeBadge = e.measure === 'time' ? '' : '<span class="tm">' + esc(e.time || '—') + '</span>';
+      var rows = e.entries.length ? '<table><tr><th>Pos</th><th>' + (e.kind === 'relay' ? 'Team' : 'Athlete') + '</th><th>House</th>' + metricHeader + '<th>Pts</th></tr>' +
         e.entries.map(function (r) {
           var h = houseOf(r.house_id);
           var photo = r.photoUrl ? '<img class="result-athlete-photo" src="' + esc(r.photoUrl) + '" alt="" loading="lazy">' : '';
-          return '<tr><td class="pos">' + (r.status !== 'ok' ? r.status.toUpperCase() : r.position === null ? '–' : r.position) + '</td><td>' + photo + esc(r.name) + relayDetails(r) + '</td><td><i class="hd" style="background:' + esc(houseColor(h)) + '"></i>' + esc(h.name) + '</td><td>' + esc(r.performance) + '</td><td>' + r.points + '</td></tr>';
+          return '<tr><td class="pos">' + (r.status !== 'ok' ? r.status.toUpperCase() : r.position === null ? '–' : r.position) + '</td><td>' + photo + esc(r.name) + relayDetails(r) + '</td><td><i class="hd" style="background:' + esc(houseColor(h)) + '"></i>' + esc(h.name) + '</td>' + (e.measure === 'time' ? '' : '<td>' + esc(r.performance) + '</td>') + '<td>' + r.points + '</td></tr>';
         }).join('') + '</table>' : '<div class="empty">No results recorded yet.</div>';
       var isOpen = !!open[e.id];
-      return '<div class="evwrap' + (isOpen ? ' open' : '') + '"><button type="button" class="ev" data-e="' + e.id + '" aria-expanded="' + isOpen + '"><span class="tm">' + esc(e.time || '—') + '</span><span class="en">' + esc(e.name) + '<small>' + esc(e.level) + (e.kind === 'relay' ? ' · Relay' : '') + '</small></span><span>' + pill(e, nextId) + '<span class="chev" aria-hidden="true">›</span></span></button><div class="evres">' + rows + '</div></div>';
+      return '<div class="evwrap' + (isOpen ? ' open' : '') + '"><button type="button" class="ev' + (e.measure === 'time' ? ' no-time' : '') + '" data-e="' + e.id + '" aria-expanded="' + isOpen + '">' + timeBadge + '<span class="en">' + esc(e.name) + '<small>' + esc(e.level) + (e.kind === 'relay' ? ' · Relay' : '') + '</small></span><span>' + pill(e, nextId) + '<span class="chev" aria-hidden="true">›</span></span></button><div class="evres">' + rows + '</div></div>';
     }).join('') : '<div class="empty">' + (evs.length ? 'No events match these filters.' : 'The schedule will appear here once the officials add events.') + '</div>';
   }
   document.addEventListener('click', function (e) {

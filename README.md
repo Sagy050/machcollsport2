@@ -6,7 +6,7 @@ The Lovable-hosted Sports Day app: a public live scoreboard, staff event-operati
 
 1. Connect the Lovable project to Lovable Cloud/Supabase and make sure migrations `0000` through `0003` are applied. Apply [`0004_official_2026_programme.sql`](./drizzle/migrations/0004_official_2026_programme.sql) once to back up the old schedule/results and install the official programme. It keeps the athlete roster and staff accounts.
 2. Apply [`0005_athlete_multiple_divisions.sql`](./drizzle/migrations/0005_athlete_multiple_divisions.sql) after `0004`. It lets an athlete be assigned to more than one age group and seeds the corresponding individual event entries.
-3. Apply [`0006_ravens_events.sql`](./drizzle/migrations/0006_ravens_events.sql) after `0005`. It adds the Ravens PDF's missing events without changing the existing timed programme; set their times in **Setup → Events**.
+3. Apply [`0006_ravens_events.sql`](./drizzle/migrations/0006_ravens_events.sql) after `0005`. It adds the Ravens PDF's missing events; field-event start times can be set in **Setup → Events**.
 4. Apply [`0007_lower_junior_events.sql`](./drizzle/migrations/0007_lower_junior_events.sql) after `0006`. It adds the Lower Junior long jump and 4 × 100m relay events from the Eagles and Hawks lists.
 5. Apply [`0008_falcons_long_jump_divisions.sql`](./drizzle/migrations/0008_falcons_long_jump_divisions.sql) after `0007` to add the Falcons long-jump divisions.
 6. Apply [`0009_ads_and_athlete_photos.sql`](./drizzle/migrations/0009_ads_and_athlete_photos.sql) after `0008`. It adds admin-managed marketplace ads and private storage buckets for ad and consented athlete photos.

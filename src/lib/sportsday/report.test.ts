@@ -3,7 +3,7 @@ import { computeState, type RawData } from "./report";
 import { DEFAULT_SCHEME } from "./scoring";
 
 describe("computeState age-group awards", () => {
-  it("uses the linked athlete's house when an individual entry has a stale house", () => {
+  it("uses the linked house and hides timed performance from public state", () => {
     const raw: RawData = {
       settings: {
         title: "Meet",
@@ -66,8 +66,12 @@ describe("computeState age-group awards", () => {
     };
 
     const state = computeState(raw);
+    const staffState = computeState(raw, { staff: true });
 
     expect(state.events[0]?.entries[0]?.house_id).toBe(1);
+    expect(state.events[0]?.entries[0]?.performance).toBe("");
+    expect(state.events[0]?.time).toBe("");
+    expect(staffState.events[0]?.entries[0]?.recordOrder).toBe(10);
     expect(state.standings.find((house) => house.house_id === 1)?.points).toBeGreaterThan(0);
     expect(state.standings.find((house) => house.house_id === 2)?.points).toBe(0);
   });

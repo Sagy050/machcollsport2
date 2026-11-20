@@ -4,7 +4,7 @@
  * POINTS SYSTEM (default, editable by an admin):
  *   1st = 10, 2nd = 7, 3rd = 5, 4th = 3, 5th and below = 1.
  *   DNS / DNF / DQ score 0. Relays use the same scale as individual events.
- *   Points and positions are never stored: they are recalculated from the recorded times/distances,
+ *   Points and positions are never stored: they are recalculated from track finish order or field distances,
  *   so changing the scale (or correcting a result) instantly re-scores the whole day consistently.
  */
 import { bad } from "./util";
@@ -55,12 +55,12 @@ export function parsePerformance(measure: string, raw: unknown): { text: string;
   return { text, value: Number(m[1]) };
 }
 
-/** Lower is better for time, higher is better for distance. */
+/** Lower is better for timed finish order; higher is better for distance. */
 export const lowerIsBetter = (measure: string) => measure === "time";
 
 /**
  * Competition ranking ("1224"): equal performances share a position and the next position is skipped.
- * Returns Map(entryId -> position) for entries that are status 'ok' and have a numeric performance.
+ * Returns Map(entryId -> position) for entries that are status 'ok' and have a numeric result key.
  */
 export function rankByPerformance(
   entries: { id: number; status: string; perf_value: number | null | undefined }[],

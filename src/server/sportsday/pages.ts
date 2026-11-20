@@ -22,6 +22,7 @@ export function page(name: keyof typeof PAGES): Response {
   return new Response(html, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
+      ...(name === "staff" ? { "Accept-CH": "Sec-CH-UA-Model" } : {}),
       "Cache-Control": "no-cache",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "same-origin",

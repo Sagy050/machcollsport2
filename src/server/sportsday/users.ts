@@ -7,6 +7,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { HttpError, bad, str, oneOf } from "@/lib/sportsday/util";
 import { audit, dbError, type Actor } from "./store";
+import { identifyDevice } from "./device-name";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -119,10 +120,16 @@ export async function sessionUser(request: Request): Promise<SessionUser | null>
 
 const killSessions = (uid: string) => q(db().from("staff_sessions").delete().eq("profile_id", uid));
 
-export async function login(body: Any, ip: string) {
+export async function login(
+  body: Any,
+  ip: string,
+  userAgent: string | null,
+  modelHint: string | null,
+) {
   const username = str(body.username, { field: "Username", max: 120 });
   const password = typeof body.password === "string" ? body.password.slice(0, 200) : "";
   const u = username.toLowerCase();
+  const device = identifyDevice(userAgent, modelHint);
   // Brute-force protection: 8 bad tries per user+address and 40 per address in 10 minutes.
   const since = now() - 10 * 60e3;
   const ipLike = `%"ip":"${likeEscape(ip)}"%`;
@@ -138,14 +145,14 @@ export async function login(body: Any, ip: string) {
   const role = p ? (await roleMap([p.id])).get(p.id) : undefined;
   const ok = !!(p && p.email && p.active && role && (await passwordOk(p.email, password)));
   if (!ok || !p || !role) {
-    await audit(null, "login.fail", { username, ip }, u);
+    await audit(null, "login.fail", { username, ip, device }, u);
     throw new HttpError(401, "Wrong username or password");
   }
   const token = randomToken();
   await q(db().from("staff_sessions").insert({ token_hash: await sha256(token), profile_id: p.id, created_at: now(), expires_at: now() + SESSION_MS }));
   await q(db().from("profiles").update({ last_login: now() }).eq("id", p.id));
   const actor = { id: p.staff_no, uid: p.id, username: p.username!, display_name: p.display_name || p.username!, role };
-  await audit(actor, "login", { ip });
+  await audit(actor, "login", { device });
   return { token, user: { id: actor.id, username: actor.username, display_name: actor.display_name, role } };
 }
 
@@ -200,7 +207,12 @@ async function claimInitialAdmin() {
   return claimToken;
 }
 
-export async function bootstrapAdmin(body: Any, ip: string) {
+export async function bootstrapAdmin(
+  body: Any,
+  ip: string,
+  userAgent: string | null,
+  modelHint: string | null,
+) {
   const secret = bootstrapSecret();
   if (!secret) throw new HttpError(503, "First-admin setup is not configured. Set SPORTSDAY_SETUP_KEY to a secret of at least 32 characters.");
   const since = now() - 15 * 60e3;
@@ -221,7 +233,7 @@ export async function bootstrapAdmin(body: Any, ip: string) {
       user_id: null,
       username: "bootstrap",
       action: "bootstrap.fail",
-      detail: JSON.stringify({ ip }),
+      detail: JSON.stringify({ ip, device: identifyDevice(userAgent, modelHint) }),
     });
     if (saved.error) throw dbError(saved.error);
     throw new HttpError(403, "The setup code is incorrect");
@@ -238,7 +250,7 @@ export async function bootstrapAdmin(body: Any, ip: string) {
       role: "admin",
     };
     await createUser(null, user);
-    return await login(user, ip);
+    return await login(user, ip, userAgent, modelHint);
   } catch (error) {
     const released = await db().from("sportsday_admin_bootstrap").delete().eq("id", 1).eq("claim_token", claimToken);
     if (released.error) console.error("Could not release first-admin setup claim", released.error);

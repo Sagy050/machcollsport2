@@ -105,7 +105,7 @@ function champion<T extends Tally & { name: string }>(list: T[]): (T & { joint: 
   return { ...first, joint: !!second && sameStats(first, second) };
 }
 
-/** Positions for every entry, worked out per event from the recorded times/distances (heats ranked together). */
+/** Positions for every entry, worked out per event from finish order or field distances. */
 export function positionsFor(events: EventRow[], entries: EntryRow[]): Map<number, number> {
   const byEvent = new Map<number, EntryRow[]>();
   for (const e of entries) {
@@ -189,6 +189,7 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
   }
   const shape = (e: Scored) => {
     const a = e.athlete_id === null ? null : athleteById.get(e.athlete_id);
+    const event = eventById.get(e.event_id);
     const out: Record<string, unknown> = {
       id: e.id,
       name: mode === "full" || e.athlete_id === null ? e.name : formatName(e.name, mode),
@@ -196,7 +197,7 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
       athlete_id: e.athlete_id,
       house_id: e.house_id,
       heat: e.heat,
-      performance: e.performance,
+      performance: event?.measure === "time" ? "" : e.performance,
       position: e.position,
       status: e.status,
       points: e.points,
@@ -211,15 +212,27 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
           full_name: m.full_name,
           house_id: m.house_id,
         })),
-      relaySplits: relaySplitsByEntry.get(e.id) || [],
+      relaySplits: event?.measure === "time" ? [] : relaySplitsByEntry.get(e.id) || [],
     };
     if (e.position === 1 && a?.photo_url) out.photoUrl = a.photo_url;
-    if (staff) Object.assign(out, { by: e.by_name || null, at: e.updated_at, level: a ? a.level : null, levels: a ? a.levels : [], gender: a ? a.gender : null });
+    if (staff)
+      Object.assign(out, {
+        by: e.by_name || null,
+        at: e.updated_at,
+        level: a ? a.level : null,
+        levels: a ? a.levels : [],
+        gender: a ? a.gender : null,
+        recordOrder: event?.measure === "time" ? e.perf_value : null,
+      });
     return out;
   };
   const evList = events
     .slice()
-    .sort((a, b) => (a.sched_time || "99:99").localeCompare(b.sched_time || "99:99") || a.sort - b.sort || a.id - b.id)
+    .sort((a, b) =>
+      a.measure === "time" || b.measure === "time"
+        ? a.sort - b.sort || a.id - b.id
+        : (a.sched_time || "99:99").localeCompare(b.sched_time || "99:99") || a.sort - b.sort || a.id - b.id,
+    )
     .map((ev) => {
       const list = (entriesByEvent.get(ev.id) || [])
         .slice()
@@ -237,8 +250,9 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
         gender: ev.gender,
         kind: ev.kind,
         measure: ev.measure,
+        sort: ev.sort,
         relayLegs: ev.relay_legs || 4,
-        time: ev.sched_time,
+        time: ev.measure === "time" ? "" : ev.sched_time,
         status: ev.status,
         entries: list.map(shape),
         count: list.length,
@@ -283,7 +297,7 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
         photoUrl: e.position === 1 ? athlete?.photo_url || null : null,
         house_id: e.house_id,
         position: e.position,
-        performance: e.performance,
+        performance: ev?.measure === "time" ? "" : e.performance,
         points: e.points,
       };
     });

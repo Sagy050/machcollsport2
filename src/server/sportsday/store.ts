@@ -2,7 +2,7 @@
  * Data layer (server only). Port of the original SQLite store onto Lovable Cloud.
  * Every write is a small, single-purpose change; a database trigger bumps `live_version`
  * after each one, which is what open pages listen to and what the state cache keys on.
- * Positions are never stored: they are worked out from times/distances when state is built.
+ * Positions are never stored: they are worked out from finish order or field measurements.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -205,6 +205,7 @@ function cleanEvent(b: Body, cur: EventRow | null): EventFields {
     if (t && !/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) throw bad("Time must look like 09:30");
     f.sched_time = t;
   }
+  if (f.measure === "time") f.sched_time = "";
   return f;
 }
 
@@ -990,39 +991,44 @@ async function entryAndEvent(actor: Actor, id: number) {
 }
 
 export async function recordTime(actor: Actor, id: number, ms: unknown) {
-  const t = int(ms, { field: "Time", min: 1, max: 86400000 });
+  const { ev } = await entryAndEvent(actor, id);
+  void ms;
+  if (ev.measure === "time") throw bad("Timed events now record finish order, not measured times");
+  throw bad("This event is measured in distance, not time");
+}
+
+const HEAT_ORDER_STRIDE = 100_000;
+const ORDER_ID_SCALE = 2_147_483_648;
+
+export async function recordFinish(actor: Actor, id: number) {
   const { cur, ev } = await entryAndEvent(actor, id);
-  if (ev.measure !== "time") throw bad("This event is measured in distance, not time");
-  await touch(actor, ev, id, { performance: S.formatTime(t / 1000), perf_value: t / 1000 });
-  await audit(actor, "entry.time", { event: ev.name, name: cur.name, ms: t });
+  if (ev.measure !== "time") throw bad("Finish order is only used for timed track events");
+  if (cur.status !== "ok" || cur.perf_value !== null) throw bad("Clear this result before recording a new finish");
+  if (ev.kind === "relay") {
+    const members = await q<{ athlete_id: number }[]>(
+      db().from("relay_members").select("athlete_id").eq("entry_id", id),
+    );
+    if (members.length !== (ev.relay_legs || 4)) throw bad("Set all relay runners before recording the finish");
+  }
+
+  const recordedInHeat = await q<{ perf_value: number | null; status: string }[]>(
+    db().from("sd_entries").select("perf_value,status").eq("event_id", ev.id).eq("heat", cur.heat),
+  );
+  const count = recordedInHeat.filter((entry) => entry.status === "ok" && entry.perf_value !== null).length;
+  if (count + 1 >= HEAT_ORDER_STRIDE) throw bad("This heat has too many recorded finishers");
+  const order = cur.heat * HEAT_ORDER_STRIDE + count + 1 + cur.id / ORDER_ID_SCALE;
+  await q(db().from("relay_splits").delete().eq("entry_id", id));
+  await touch(actor, ev, id, { performance: "", perf_value: order });
+  await audit(actor, "entry.finish", { event: ev.name, name: cur.name, heat: cur.heat });
   return getEntry(id);
 }
 
 export async function recordRelaySplit(actor: Actor, id: number, leg: unknown, elapsedMs: unknown) {
-  const { cur, ev } = await entryAndEvent(actor, id);
+  const { ev } = await entryAndEvent(actor, id);
+  void leg;
+  void elapsedMs;
   if (ev.kind !== "relay") throw bad("This event is not a relay");
-  const n = int(leg, { field: "Leg", min: 1, max: ev.relay_legs || 4 });
-  const elapsed = int(elapsedMs, { field: "Elapsed time", min: 1, max: 86400000 });
-  const t = now();
-  const split = await q<{ leg: number; cumulative_ms: number; split_ms: number }>(
-    db().rpc("sd_record_relay_split", {
-      _entry: id,
-      _leg: n,
-      _elapsed_ms: elapsed,
-      _performance: S.formatTime(elapsed / 1000),
-      _perf_value: elapsed / 1000,
-      _actor: actor!.id,
-      _now: t,
-    }),
-  );
-  await audit(actor, "relay.split", {
-    event: ev.name,
-    house_id: cur.house_id,
-    leg: n,
-    elapsedMs: elapsed,
-    splitMs: split.split_ms,
-  });
-  return { ...split, entry: await getEntry(id) };
+  throw bad("Relay events now record finish order, not split times");
 }
 
 export async function undoRelaySplit(actor: Actor, id: number) {

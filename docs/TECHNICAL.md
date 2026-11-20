@@ -9,8 +9,8 @@ The separate `sportsday-v2` app uses Express and SQLite. Its database and deploy
 ## Data and meet operations
 
 - **Athletes:** name, house, age group, gender, and a unique bib.
-- **Events and entries:** individual events may be timed or measured by distance; relay events create one team entry per house. Relay lineups use four eligible athletes, and each baton handoff records a cumulative split.
-- **Results:** positions and points are calculated from the recorded performance. Tied performances share a position. Relay points go to the house, not an individual.
+- **Events and entries:** track and relay entries are recorded in finish order; field events are measured by distance. Relay events create one team entry per house.
+- **Results:** track places come from finish order and field places from distance. Track times and relay splits are not recorded or displayed; staff combine heats by adjusting the event-wide finish order. Relay points go to the house, not an individual.
 - **Roster intake:** administrators can import CSV/TXT/XLS/XLSX rosters, download a sample workbook, and clear the roster after results are cleared. Clearing the roster saves a database backup.
 - **Athlete photos:** admins can record consent and upload a compressed JPEG only when permission is granted. Photos are kept in private storage and signed into public results only for consenting athletes.
 - **Marketplace ads:** `/ads` lists active club ads; only admins can create, edit, publish, hide, or delete ads through the staff setup area.
@@ -44,6 +44,7 @@ Do not expose the setup key through a `VITE_` variable. Remove it from deploymen
 - API inputs have size and field limits; roster uploads are capped at 8 MB.
 - Relay split writes, relay lineup changes, and heat resets use Postgres functions to preserve atomic validation and writes.
 - Roster clearing and full resets create a backup record first. User actions are written to the audit table.
+- Login activity displays a browser-derived device label instead of the IP; old entries without device metadata show that the device was not recorded. Failed-login IPs remain in audit details for rate limiting but are hidden in the activity display.
 
 ## API overview
 

@@ -419,6 +419,7 @@ body:has(#login:not([hidden])) { display: grid; min-height: 100vh; background: #
 .schedule-heading > small { color: #71717a; font-size: 13px; }
 .schedule-list { display: grid; }
 .schedule-card { display: grid; grid-template-columns: 94px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 11px 0; border-top: 1px solid rgba(255, 255, 255, .06); }
+.schedule-card.no-time { grid-template-columns: minmax(0, 1fr) auto; }
 .schedule-time { display: grid; gap: 4px; color: #71717a; font-size: 13px; font-weight: 750; letter-spacing: .12em; }
 .schedule-time input { min-height: 34px; padding: 5px 7px; border-color: rgba(255, 255, 255, .08); border-radius: 8px; background: rgba(9, 9, 11, .45); color: #d4d4d8; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .schedule-copy { display: grid; min-width: 0; gap: 2px; }
@@ -486,6 +487,7 @@ body:has(#login:not([hidden])) { display: grid; min-height: 100vh; background: #
 .next-up-heading .eyebrow > span { animation: pulse 1.6s infinite; }
 .next-up-heading p { margin: 4px 0 0; color: #a1a1aa; font-size: 13px; }
 .next-event { display: grid; grid-template-columns: auto minmax(0, 1fr) 16px; align-items: center; gap: 10px; margin-top: 7px; padding: 10px; border: 1px solid transparent; border-radius: 12px; background: rgba(9, 9, 11, .38); color: inherit; text-decoration: none; transition: background .16s, border-color .16s, transform .16s; }
+.next-event.no-time { grid-template-columns: minmax(0, 1fr) 16px; }
 .next-event:hover { transform: translateY(-1px); border-color: rgba(255, 255, 255, .08); background: rgba(39, 39, 42, .72); }
 .next-event .tm { padding: 6px 8px; border: 1px solid rgba(255, 255, 255, .06); border-radius: 8px; background: rgba(39, 39, 42, .7); color: #d4d4d8; font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .next-event b, .next-event small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -658,6 +660,8 @@ dialog .btn.danger[data-act-out]:hover { background: rgba(244, 63, 94, .1); }
   .custom-event-row input { grid-column: 1 / -1; }
   .schedule-card { grid-template-columns: 82px minmax(0, 1fr); gap: 10px; }
   .schedule-actions { grid-column: 2; justify-content: flex-start; }
+  .schedule-card.no-time { grid-template-columns: minmax(0, 1fr) auto; }
+  .schedule-card.no-time .schedule-actions { grid-column: 2; }
   .schedule-heading { align-items: flex-start; flex-direction: column; }
 }
 @media (max-width: 480px) {
@@ -1137,6 +1141,7 @@ dialog .btn.danger[data-act-out]:hover { background: #fff1f2; }
 .programme-total small { color: #64748b; font-size: 13px; }
 .programme-list { display: grid; gap: 8px; }
 .programme-card { grid-template-columns: 76px minmax(0, 1fr) auto auto; padding: 12px 15px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; }
+.programme-card.no-time { grid-template-columns: minmax(0, 1fr) auto auto; }
 .programme-time { display: grid; place-items: center; min-height: 40px; border-radius: 10px; background: #f1f5f9; color: #334155; font: 800 13px ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 .programme-status { justify-self: end; }
 
@@ -1166,6 +1171,9 @@ dialog .btn.danger[data-act-out]:hover { background: #fff1f2; }
   .programme-card { grid-template-columns: 68px minmax(0, 1fr) auto; gap: 8px; }
   .programme-status { grid-column: 2; justify-self: start; }
   .programme-card .schedule-actions { grid-column: 2 / -1; }
+  .programme-card.no-time { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .programme-card.no-time .programme-status { grid-column: 2; }
+  .programme-card.no-time .schedule-actions { grid-column: 3; }
 }
 @media (max-width: 520px) {
   .brand img { width: 32px; height: 32px; }
@@ -1193,6 +1201,8 @@ dialog .btn.danger[data-act-out]:hover { background: #fff1f2; }
   .programme-heading { padding: 16px; }
   .programme-heading h1 { font-size: 23px; }
   .programme-card { grid-template-columns: 1fr; }
+  .programme-card.no-time { grid-template-columns: 1fr; }
+  .programme-card.no-time .programme-status, .programme-card.no-time .schedule-actions { grid-column: 1; }
   .programme-time { justify-self: start; padding: 0 10px; }
   .programme-status, .programme-card .schedule-actions { grid-column: 1; }
 }
