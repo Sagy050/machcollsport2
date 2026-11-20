@@ -371,10 +371,11 @@
     var runner = members[relayLeg - 1];
     var relayDone = (e.relaySplits || []).map(function (s) { return 'L' + s.leg + ' ' + fmtTime(s.splitMs / 1000); }).join(' · ');
     var relayLegs = ev.relayLegs || 4;
-    var inner = (rel ? '<span class="bib">' + esc(h.name) + '</span><span class="nm">' + esc(ev.name) + ' team</span>' +
+    var marker = '<span class="dot" style="background:' + esc(houseColor(h)) + '" aria-hidden="true"></span>';
+    var inner = (rel ? '<span class="bib">' + marker + esc(h.name) + '</span><span class="nm">' + esc(ev.name) + ' team</span>' +
       (members.length === relayLegs ? '<span class="hn">' + (state === 'done' || state === 'out' ? 'Runners: ' : 'Next: Leg ' + relayLeg + ' · ') + esc(state === 'done' || state === 'out' ? members.map(function (m) { return m.name; }).join(', ') : runner.name) + '</span>' : '<span class="hn">Lineup not set · ' + members.length + '/' + relayLegs + '</span>') +
       (relayDone ? '<span class="relay-splits">' + esc(relayDone) + '</span>' : '') :
-      '<span class="bib">' + esc(e.bib) + '</span><span class="nm">' + esc(shortName(e.name)) + '</span><span class="hn">' + esc(h.name) + '</span>') +
+      '<span class="bib">' + esc(e.bib) + '</span><span class="nm">' + marker + esc(shortName(e.name)) + '</span><span class="hn">' + esc(h.name) + '</span>') +
       (state === 'done' ? '<span class="res">' + esc(e.performance) + '</span><span class="place">' + ord(e.position) + '</span>' : state === 'out' ? '<span class="res">' + esc(e.status.toUpperCase()) + '</span>' : '');
     return '<div class="tilew"><button class="tile ' + state + ' house-' + houseKey(h) + '" style="--c:' + esc(houseColor(h)) + '" data-act="tap" data-id="' + e.id + '"' + (rel && state === 'wait' && members.length !== relayLegs ? ' disabled' : '') + ' aria-label="' + esc((rel ? h.name + ' relay team' : e.bib + ' ' + e.name) + (state === 'done' ? ', ' + ord(e.position) + ', ' + e.performance : '')) + '">' + inner + '</button><button class="more" data-act="entrymenu" data-id="' + e.id + '" aria-label="Options for ' + esc(e.name) + '">⋯</button></div>';
   }

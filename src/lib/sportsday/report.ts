@@ -121,17 +121,38 @@ export function positionsFor(events: EventRow[], entries: EntryRow[]): Map<numbe
 }
 
 export function computeState(raw: RawData, { staff = false, version = 0 }: { staff?: boolean; version?: number } = {}) {
-  const { settings, houses, events, entries, athletes } = raw;
+  const { settings, houses, events, athletes } = raw;
   const scheme = settings.scheme;
   const mode = staff ? "full" : settings.nameDisplay;
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const eventById = new Map(events.map((e) => [e.id, e]));
-  const positions = positionsFor(events, entries);
   const relayMembersByEntry = new Map<number, RelayMemberRow[]>();
   for (const member of raw.relayMembers || []) {
     if (!relayMembersByEntry.has(member.entry_id)) relayMembersByEntry.set(member.entry_id, []);
     relayMembersByEntry.get(member.entry_id)!.push(member);
   }
+  const entries = raw.entries.map((entry) => {
+    if (entry.athlete_id !== null) {
+      const athlete = athleteById.get(entry.athlete_id);
+      return athlete && athlete.house_id !== entry.house_id
+        ? { ...entry, house_id: athlete.house_id }
+        : entry;
+    }
+
+    const members = relayMembersByEntry.get(entry.id) || [];
+    const relay = eventById.get(entry.event_id);
+    const houseIds = new Set(members.map((member) => member.house_id));
+    if (
+      relay?.kind === "relay" &&
+      members.length === (relay.relay_legs || 4) &&
+      houseIds.size === 1
+    ) {
+      const houseId = members[0]!.house_id;
+      return houseId !== entry.house_id ? { ...entry, house_id: houseId } : entry;
+    }
+    return entry;
+  });
+  const positions = positionsFor(events, entries);
   const relaySplitsByEntry = new Map<number, { leg: number; cumulativeMs: number; splitMs: number }[]>();
   for (const split of raw.relaySplits || []) {
     const list = relaySplitsByEntry.get(split.entry_id) || [];
