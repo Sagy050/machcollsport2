@@ -76,7 +76,7 @@ describe("computeState age-group awards", () => {
     expect(state.standings.find((house) => house.house_id === 2)?.points).toBe(0);
   });
 
-  it("uses the common runner house for a complete relay lineup", () => {
+  it("keeps relay team house attribution and hides legacy lineup data", () => {
     const raw: RawData = {
       settings: {
         title: "Meet",
@@ -144,7 +144,9 @@ describe("computeState age-group awards", () => {
       })),
     };
 
-    expect(computeState(raw).events[0]?.entries[0]?.house_id).toBe(1);
+    const relayEntry = computeState(raw).events[0]?.entries[0];
+    expect(relayEntry?.house_id).toBe(2);
+    expect(relayEntry?.relayMembers).toEqual([]);
   });
 
   it("counts an athlete in every division where they have an entry", () => {

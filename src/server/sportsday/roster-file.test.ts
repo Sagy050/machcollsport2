@@ -14,22 +14,22 @@ describe("parseRosterFile", () => {
         level: "Senior",
         gender: "F",
         events: "",
-        relay_teams: "",
         bib: "",
       },
     ]);
   });
 
-  it("reads relay leg assignments from the same roster file", () => {
+  it("ignores legacy relay lineup columns", () => {
     const csv = "Relay Teams,Name,House,Age Groups,Gender\nJunior | F | 4 x 100m Relay | 1,Ada Athlete,Ravens,Junior,F\n";
     const rows = parseRosterFile("roster.csv", new TextEncoder().encode(csv));
 
-    expect(rows[0]).toMatchObject({
+    expect(rows[0]).toEqual({
       full_name: "Ada Athlete",
       house: "Ravens",
       level: "Junior",
       gender: "F",
-      relay_teams: "Junior | F | 4 x 100m Relay | 1",
+      events: "",
+      bib: "",
     });
   });
 

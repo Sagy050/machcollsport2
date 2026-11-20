@@ -24,7 +24,7 @@ The database schema and incremental changes live in `drizzle/migrations/`. Migra
 |---|---:|---:|---:|
 | View scoreboard, events, and report | yes | yes | yes |
 | Start clocks and record results | no | yes | yes |
-| Manage athletes, events, relay lineups, and heats | no | no | yes |
+| Manage athletes, events, house-based relay teams, and heats | no | no | yes |
 | Manage ads and athlete photo consent | no | no | yes |
 | Manage staff accounts, scoring, settings, backups, and resets | no | no | yes |
 
@@ -42,7 +42,7 @@ Do not expose the setup key through a `VITE_` variable. Remove it from deploymen
 - Server routes use the Supabase service-role client. It must remain server-only and must never be included in browser bundles.
 - Write routes require the app’s custom request header and reject cross-site requests.
 - API inputs have size and field limits; roster uploads are capped at 8 MB.
-- Relay split writes, relay lineup changes, and heat resets use Postgres functions to preserve atomic validation and writes.
+- Relay results are recorded against house-team entries; current recording does not require runner lineups or relay splits.
 - Roster clearing and full resets create a backup record first. User actions are written to the audit table.
 - Login activity displays a browser-derived device label instead of the IP; old entries without device metadata show that the device was not recorded. Failed-login IPs remain in audit details for rate limiting but are hidden in the activity display.
 
@@ -52,7 +52,7 @@ Do not expose the setup key through a `VITE_` variable. Remove it from deploymen
 - **Marketplace:** `GET /api/ads` returns active ads only.
 - **Sign-in and first setup:** `GET /api/me`, `POST /api/login`, `/api/logout`, `/api/me/password`, `GET /api/bootstrap/status`, `POST /api/bootstrap`.
 - **Recording:** `GET /api/staff/state`; event start/reset/complete/reopen; entry time/relay split/undo/mark/clear/status; heat assignment.
-- **Admin setup:** event and entry management, relay lineups, athlete event assignments and photo consent, roster import/export/template/clear, ad management, staff users, settings, finalisation, audit, backup, and reset.
+- **Admin setup:** event and entry management, house-based relay teams, athlete event assignments and photo consent, roster import/export/template/clear, ad management, staff users, settings, finalisation, audit, backup, and reset.
 
 ## Local development and deployment
 

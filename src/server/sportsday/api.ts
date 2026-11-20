@@ -110,9 +110,6 @@ route("POST", "/api/events/:id/complete", "staff", async ({ user, params, body }
 route("POST", "/api/events/:id/reopen", "staff", async ({ user, params }) => json({ event: await store.reopenEvent(user, id(params)) }));
 route("POST", "/api/events/:id/swap", "staff", async ({ user, body }) => json(await store.swapResults(user, id(body, "a"), id(body, "b"))));
 route("POST", "/api/events/:id/entries", "staff", async ({ user, params, body }) => json(await store.addEntries(user, id(params), body), 201));
-route("POST", "/api/events/:id/relay-lineup", "admin", async ({ user, params, body }) =>
-  json(await store.setRelayLineup(user, id(params), body.house_id, body.athlete_ids)),
-);
 route("POST", "/api/entries/:id/finish", "staff", async ({ user, params }) =>
   json({ entry: await store.recordFinish(user, id(params)) }),
 );

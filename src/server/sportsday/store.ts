@@ -15,8 +15,6 @@ import {
   type EntryRow,
   type EventRow,
   type HouseRow,
-  type RelayMemberRow,
-  type RelaySplitRow,
   type Settings,
 } from "@/lib/sportsday/report";
 
@@ -235,12 +233,14 @@ export async function createEvent(actor: Actor, b: Body) {
   return { ...(await getEvent(ev.id)), entries: added };
 }
 
-/** Create many events at once: names x levels x genders. Relays are one Mixed event. */
+/** Create each selected event for every chosen age group and division. */
 export async function bulkEvents(actor: Actor, b: Body) {
   const items = Array.isArray(b.items) ? b.items : [];
   if (!items.length) throw bad("Choose at least one event");
   const levels = (Array.isArray(b.levels) && b.levels.length ? b.levels : ATHLETE_LEVELS).map((l: unknown) => oneOf(l, ATHLETE_LEVELS, "Level"));
-  const genders = (Array.isArray(b.genders) ? b.genders : ["F", "M"]).map((g: unknown) => oneOf(g, GENDERS, "Gender"));
+  const genders = (Array.isArray(b.genders) ? b.genders : ["F", "M"]).map((g: unknown) =>
+    g === "Mixed" ? null : oneOf(g, GENDERS, "Gender"),
+  );
   const plan: EventFields[] = [];
   for (const it of items) {
     const name = str(it.name, { field: "Event name", required: true, max: 80 });
@@ -249,8 +249,9 @@ export async function bulkEvents(actor: Actor, b: Body) {
     const relayLegs = kind === "relay"
       ? relayLegCount(it.relay_legs !== undefined ? it.relay_legs : /8\s*[x×]\s*50/i.test(name) ? 8 : 4)
       : 0;
-    if (kind === "relay") plan.push({ name, level: "Mixed", gender: null, kind, measure, sched_time: "", relay_legs: relayLegs });
-    else for (const level of levels) for (const g of genders.length ? genders : [null]) plan.push({ name, level, gender: g, kind, measure, sched_time: "", relay_legs: 0 });
+    for (const level of levels)
+      for (const g of genders.length ? genders : [null])
+        plan.push({ name, level, gender: g, kind, measure, sched_time: "", relay_legs: relayLegs });
   }
   if (plan.length > 200) throw bad("That would create more than 200 events. Choose fewer.");
   const existing = await q<EventRow[]>(db().from("sd_events").select("name,level,gender,kind"));
@@ -306,19 +307,12 @@ async function signedMediaUrls(bucket: string, paths: (string | null | undefined
 }
 
 export async function listAthletes() {
-  const [athletes, entries, relayMembers, events] = await Promise.all([
+  const [athletes, entries, events] = await Promise.all([
     q<AthleteRow[]>(db().from("athletes").select("*").order("bib")),
     selectAll<{ id: number; athlete_id: number | null; event_id: number }>("sd_entries", "id,athlete_id,event_id"),
-    selectAll<{ athlete_id: number; entry_id: number; leg: number }>(
-      "relay_members",
-      "athlete_id,entry_id,leg",
-      undefined,
-      ["entry_id", "leg"],
-    ),
     selectAll<{ id: number; name: string }>("sd_events", "id,name"),
   ]);
   const eventById = new Map(events.map((event) => [event.id, event.name]));
-  const eventByEntryId = new Map(entries.map((entry) => [entry.id, entry.event_id]));
   const athleteEvents = new Map<number, Set<number>>();
   const addEvent = (athleteId: number, eventId: number) => {
     const eventIds = athleteEvents.get(athleteId) || new Set<number>();
@@ -326,10 +320,6 @@ export async function listAthletes() {
     athleteEvents.set(athleteId, eventIds);
   };
   for (const entry of entries) if (entry.athlete_id !== null) addEvent(entry.athlete_id, entry.event_id);
-  for (const member of relayMembers) {
-    const eventId = eventByEntryId.get(member.entry_id);
-    if (eventId !== undefined) addEvent(member.athlete_id, eventId);
-  }
   const urls = await signedMediaUrls(ATHLETE_PHOTO_BUCKET, athletes
     .filter((athlete) => athlete.photo_consent === "granted")
     .map((athlete) => athlete.photo_path));
@@ -413,12 +403,6 @@ export async function updateAthlete(actor: Actor, id: number, b: Body) {
   const cur = await getAthlete(id);
   if (!cur) throw new HttpError(404, "Athlete not found");
   const f = await cleanAthlete(b, cur);
-  if (f.house_id !== cur.house_id) {
-    const relayMembership = await q<{ entry_id: number }[]>(
-      db().from("relay_members").select("entry_id").eq("athlete_id", id).limit(1),
-    );
-    if (relayMembership.length) throw new HttpError(409, "Remove this athlete from their relay lineup before changing houses");
-  }
   if (!f.bib) f.bib = cur.bib;
   if ((await sameNameInHouse(f.full_name, f.house_id)).some((r) => r.id !== id))
     throw new HttpError(409, "Another athlete with that name is already in that house");
@@ -447,7 +431,7 @@ export async function updateAthleteEvents(actor: Actor, id: number, eventIds: un
   for (const eventId of ids) {
     const event = eventById.get(eventId);
     if (!event) throw bad("One or more selected events no longer exist");
-    if (event.kind === "relay") throw bad("Relay runners are assigned in the relay lineup");
+    if (event.kind === "relay") throw bad("Relay teams are entered by house, not assigned to individual athletes");
     if (!currentByEvent.has(eventId) && !fits(event, athlete)) {
       throw bad(`${event.name} does not match this athlete’s age group and gender`);
     }
@@ -635,21 +619,6 @@ export async function deleteAthlete(actor: Actor, id: number) {
     db().from("sd_entries").select("id", { count: "exact", head: true }).eq("athlete_id", id).or("perf_value.not.is.null,status.neq.ok"),
   );
   if (n > 0) throw new HttpError(409, `${cur.full_name} already has ${n} result${n === 1 ? "" : "s"}. Clear those first`);
-  const memberships = await q<{ entry_id: number }[]>(
-    db().from("relay_members").select("entry_id").eq("athlete_id", id),
-  );
-  const relayIds = memberships.map((m) => m.entry_id);
-  const [relayResult, relaySplits] = relayIds.length
-    ? await Promise.all([
-        q<{ id: number }[]>(
-          db().from("sd_entries").select("id").in("id", relayIds).or("perf_value.not.is.null,status.neq.ok").limit(1),
-        ),
-        q<{ entry_id: number }[]>(db().from("relay_splits").select("entry_id").in("entry_id", relayIds).limit(1)),
-      ])
-    : [[], []];
-  if (relayResult.length || relaySplits.length) {
-    throw new HttpError(409, `${cur.full_name} is part of a recorded relay. Clear that relay result first`);
-  }
   await q(db().from("sd_entries").delete().eq("athlete_id", id));
   await q(db().from("athletes").delete().eq("id", id));
   if (cur.photo_path) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([cur.photo_path]));
@@ -797,7 +766,6 @@ async function fillMany(events: EventRow[], actor: Actor) {
     else for (const a of athletes) if (fits(ev, a)) rows.push(entryRow(ev, a, null, actor, t));
   }
   for (let i = 0; i < rows.length; i += 500) await q(db().from("sd_entries").insert(rows.slice(i, i + 500)));
-  for (const ev of events) if (ev.kind === "relay") await configureRelayTeams(ev, athletes);
   return rows.length;
 }
 const entryRow = (ev: EventRow, a: AthleteRow | null, h: HouseRow | null, actor: Actor, t: number) => ({
@@ -811,34 +779,6 @@ const entryRow = (ev: EventRow, a: AthleteRow | null, h: HouseRow | null, actor:
   updated_at: t,
 });
 
-async function configureRelayTeams(ev: EventRow, athletes: AthleteRow[]) {
-  const teams = await q<{ id: number; house_id: number }[]>(
-    db().from("sd_entries").select("id,house_id").eq("event_id", ev.id).is("athlete_id", null).order("id"),
-  );
-  if (!teams.length) return 0;
-  const teamIds = teams.map((team) => team.id);
-  const existing = await selectAll<{ entry_id: number; leg: number }>(
-    "relay_members",
-    "entry_id,leg",
-    (query) => query.in("entry_id", teamIds),
-    ["entry_id", "leg"],
-  );
-  const configured = new Set(existing.map((member) => member.entry_id));
-  const rows: { entry_id: number; leg: number; athlete_id: number }[] = [];
-  for (const team of teams) {
-    if (configured.has(team.id)) continue;
-    const runners = athletes
-      .filter((athlete) => athlete.house_id === team.house_id && fits(ev, athlete))
-      .sort((a, b) => a.bib.localeCompare(b.bib, undefined, { numeric: true }))
-      .slice(0, ev.relay_legs || 4);
-    if (runners.length === (ev.relay_legs || 4)) {
-      runners.forEach((runner, index) => rows.push({ entry_id: team.id, leg: index + 1, athlete_id: runner.id }));
-    }
-  }
-  for (let i = 0; i < rows.length; i += 500) await q(db().from("relay_members").insert(rows.slice(i, i + 500)));
-  return new Set(rows.map((row) => row.entry_id)).size;
-}
-
 /** Add athletes to an event (ids = list, or null for "everyone who fits"). Relays get one entry per house. */
 async function fillEntries(ev: EventRow, ids: number[] | null, actor: Actor) {
   const existing = await q<{ athlete_id: number | null; house_id: number }[]>(db().from("sd_entries").select("athlete_id,house_id").eq("event_id", ev.id));
@@ -847,7 +787,6 @@ async function fillEntries(ev: EventRow, ids: number[] | null, actor: Actor) {
   if (ev.kind === "relay") {
     for (const h of await listHouses()) if (!existing.some((e) => e.athlete_id === null && e.house_id === h.id)) rows.push(entryRow(ev, null, h, actor, t));
     for (let i = 0; i < rows.length; i += 500) await q(db().from("sd_entries").insert(rows.slice(i, i + 500)));
-    await configureRelayTeams(ev, await selectAll<AthleteRow>("athletes", "*"));
     return rows.length;
   } else {
     const have = new Set(existing.map((e) => e.athlete_id));
@@ -874,20 +813,7 @@ export async function addEntries(actor: Actor, eventId: number, b: Body) {
   const added = await fillEntries(ev, ids, actor);
   await audit(actor, "entries.add", { event: ev.name, level: ev.level, added });
   const total = await countOf(db().from("sd_entries").select("id", { count: "exact", head: true }).eq("event_id", eventId));
-  if (ev.kind !== "relay") return { added, total };
-  const teams = await q<{ id: number }[]>(
-    db().from("sd_entries").select("id").eq("event_id", eventId).is("athlete_id", null),
-  );
-  const members = teams.length
-    ? await selectAll<{ entry_id: number; leg: number }>(
-        "relay_members",
-        "entry_id,leg",
-        (query) => query.in("entry_id", teams.map((team) => team.id)),
-        ["entry_id", "leg"],
-      )
-    : [];
-  const configured = new Set(members.filter((member) => member.leg === (ev.relay_legs || 4)).map((member) => member.entry_id)).size;
-  return { added, total, configured };
+  return { added, total };
 }
 
 export async function removeEntry(actor: Actor, id: number) {
@@ -898,54 +824,6 @@ export async function removeEntry(actor: Actor, id: number) {
   await q(db().from("sd_entries").delete().eq("id", id));
   await audit(actor, "entry.remove", { event: ev.name, name: cur.name });
   return { deleted: id };
-}
-
-export async function setRelayLineup(actor: Actor, eventId: number, houseId: unknown, athleteIds: unknown) {
-  const hId = int(houseId, { field: "House" });
-  const ev = await mustEvent(eventId);
-  assertEditable(actor, ev);
-  if (ev.kind !== "relay") throw bad("This event is not a relay");
-  const legs = ev.relay_legs || 4;
-  if (!Array.isArray(athleteIds) || athleteIds.length !== legs) throw bad(`Choose exactly ${legs} runners for the relay`);
-  const ids = athleteIds.map((athleteId) => int(athleteId, { field: "Athlete" }));
-  if (new Set(ids).size !== legs) throw bad("Each runner must be different");
-  const team = await q<EntryRow | null>(
-    db()
-      .from("sd_entries")
-      .select("*")
-      .eq("event_id", eventId)
-      .eq("house_id", hId)
-      .is("athlete_id", null)
-      .maybeSingle(),
-  );
-  if (!team) throw bad("No relay team exists for that house");
-  const current = await q<{ leg: number; athlete_id: number }[]>(
-    db().from("relay_members").select("leg,athlete_id").eq("entry_id", team.id).order("leg"),
-  );
-  if (current.length === legs && current.every((member, index) => member.leg === index + 1 && member.athlete_id === ids[index])) {
-    return { entry_id: team.id, athlete_ids: ids };
-  }
-  if (team.perf_value !== null || team.status !== "ok") {
-    throw new HttpError(409, "Clear this team’s relay result before changing its runners");
-  }
-  const splits = await q<{ entry_id: number }[]>(
-    db().from("relay_splits").select("entry_id").eq("entry_id", team.id).limit(1),
-  );
-  if (splits.length) throw new HttpError(409, "Clear this team’s relay result before changing its runners");
-  const athletes = await q<AthleteRow[]>(db().from("athletes").select("*").in("id", ids));
-  if (athletes.length !== legs) throw bad("One or more selected athletes no longer exist");
-  if (athletes.some((athlete) => athlete.house_id !== hId)) throw bad(`All ${legs} runners must belong to the selected house`);
-  if (athletes.some((athlete) => !fits(ev, athlete))) throw bad(`All ${legs} runners must match this relay’s age group and gender`);
-  await q(
-    db().rpc("sd_set_relay_lineup", {
-      _entry: team.id,
-      _athlete_ids: ids,
-      _actor: actor!.id,
-      _now: now(),
-    }),
-  );
-  await audit(actor, "relay.lineup", { event: ev.name, house: (await getHouse(hId)).name, athleteIds: ids });
-  return { entry_id: team.id, athlete_ids: ids };
 }
 
 export async function setHeat(actor: Actor, id: number, heat: unknown) {
@@ -1004,13 +882,6 @@ export async function recordFinish(actor: Actor, id: number) {
   const { cur, ev } = await entryAndEvent(actor, id);
   if (ev.measure !== "time") throw bad("Finish order is only used for timed track events");
   if (cur.status !== "ok" || cur.perf_value !== null) throw bad("Clear this result before recording a new finish");
-  if (ev.kind === "relay") {
-    const members = await q<{ athlete_id: number }[]>(
-      db().from("relay_members").select("athlete_id").eq("entry_id", id),
-    );
-    if (members.length !== (ev.relay_legs || 4)) throw bad("Set all relay runners before recording the finish");
-  }
-
   const recordedInHeat = await q<{ perf_value: number | null; status: string }[]>(
     db().from("sd_entries").select("perf_value,status").eq("event_id", ev.id).eq("heat", cur.heat),
   );
@@ -1206,20 +1077,13 @@ export async function athletesCsv() {
 
 // ---- state snapshots (cached per data version, per server instance) ------------------------------
 async function loadRaw() {
-  const [settings, houses, events, entries, athletes, staff, relayMembers, relaySplits] = await Promise.all([
+  const [settings, houses, events, entries, athletes, staff] = await Promise.all([
     getSettings(),
     listHouses(),
     selectAll<EventRow>("sd_events", "*"),
     selectAll<EntryRow>("sd_entries", "*"),
     selectAll<AthleteRow>("athletes", "*"),
     q<{ staff_no: number; display_name: string | null }[]>(db().from("profiles").select("staff_no,display_name")),
-    selectAll<{ entry_id: number; leg: number; athlete_id: number }>(
-      "relay_members",
-      "entry_id,leg,athlete_id",
-      undefined,
-      ["entry_id", "leg"],
-    ),
-    selectAll<RelaySplitRow>("relay_splits", "entry_id,leg,cumulative_ms", undefined, ["entry_id", "leg"]),
   ]);
   const names = new Map(staff.map((s) => [s.staff_no, s.display_name]));
   const photoUrls = await signedMediaUrls(
@@ -1230,20 +1094,8 @@ async function loadRaw() {
     ...athlete,
     photo_url: athlete.photo_consent === "granted" && athlete.photo_path ? photoUrls.get(athlete.photo_path) || null : null,
   }));
-  const athletesById = new Map(athletes.map((athlete) => [athlete.id, athlete]));
   for (const e of entries) e.by_name = e.updated_by === null ? null : names.get(e.updated_by) || null;
-  const members: RelayMemberRow[] = relayMembers.flatMap((member) => {
-    const athlete = athletesById.get(member.athlete_id);
-    return athlete
-      ? [{
-          ...member,
-          bib: athlete.bib,
-          full_name: athlete.full_name,
-          house_id: athlete.house_id,
-        }]
-      : [];
-  });
-  return { settings, houses, events, entries, athletes: publicAthletes, relayMembers: members, relaySplits };
+  return { settings, houses, events, entries, athletes: publicAthletes };
 }
 
 type Snap = { v: number; json: string; etag: string; state: ReturnType<typeof computeState> };

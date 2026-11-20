@@ -126,31 +126,12 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
   const mode = staff ? "full" : settings.nameDisplay;
   const athleteById = new Map(athletes.map((a) => [a.id, a]));
   const eventById = new Map(events.map((e) => [e.id, e]));
-  const relayMembersByEntry = new Map<number, RelayMemberRow[]>();
-  for (const member of raw.relayMembers || []) {
-    if (!relayMembersByEntry.has(member.entry_id)) relayMembersByEntry.set(member.entry_id, []);
-    relayMembersByEntry.get(member.entry_id)!.push(member);
-  }
   const entries = raw.entries.map((entry) => {
-    if (entry.athlete_id !== null) {
-      const athlete = athleteById.get(entry.athlete_id);
-      return athlete && athlete.house_id !== entry.house_id
-        ? { ...entry, house_id: athlete.house_id }
-        : entry;
-    }
-
-    const members = relayMembersByEntry.get(entry.id) || [];
-    const relay = eventById.get(entry.event_id);
-    const houseIds = new Set(members.map((member) => member.house_id));
-    if (
-      relay?.kind === "relay" &&
-      members.length === (relay.relay_legs || 4) &&
-      houseIds.size === 1
-    ) {
-      const houseId = members[0]!.house_id;
-      return houseId !== entry.house_id ? { ...entry, house_id: houseId } : entry;
-    }
-    return entry;
+    if (entry.athlete_id === null) return entry;
+    const athlete = athleteById.get(entry.athlete_id);
+    return athlete && athlete.house_id !== entry.house_id
+      ? { ...entry, house_id: athlete.house_id }
+      : entry;
   });
   const positions = positionsFor(events, entries);
   const relaySplitsByEntry = new Map<number, { leg: number; cumulativeMs: number; splitMs: number }[]>();
@@ -201,17 +182,7 @@ export function computeState(raw: RawData, { staff = false, version = 0 }: { sta
       position: e.position,
       status: e.status,
       points: e.points,
-      relayMembers: (relayMembersByEntry.get(e.id) || [])
-        .slice()
-        .sort((a, b) => a.leg - b.leg)
-        .map((m) => ({
-          leg: m.leg,
-          athlete_id: m.athlete_id,
-          bib: m.bib,
-          name: m.full_name,
-          full_name: m.full_name,
-          house_id: m.house_id,
-        })),
+      relayMembers: [],
       relaySplits: event?.measure === "time" ? [] : relaySplitsByEntry.get(e.id) || [],
     };
     if (e.position === 1 && a?.photo_url) out.photoUrl = a.photo_url;
