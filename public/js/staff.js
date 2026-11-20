@@ -9,7 +9,7 @@
   var ord = function (n) { var v = n % 100; return n + (['th', 'st', 'nd', 'rd'][(v - 20) % 10] || ['th', 'st', 'nd', 'rd'][v] || 'th'); };
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
 
-  var ME = null, ST = null, ATH = null, USERS = null, AUDIT = null, ADS = null, skew = 0;
+  var ME = null, ST = null, ATH = null, USERS = null, AUDIT = null, ADS = null, ADS_LOADING = false, ADS_ERROR = null, skew = 0;
   var UI = { filter: 'live', q: '', heat: {}, last: {}, ahouse: 'all', aq: '', qacat: 'track' };
   var PENDING_ROSTER = null, PENDING_FILE = '', PARSING_ROSTER = false, IMPORTING_ROSTER = false, SEEDING_ROSTER = false, ROSTER_SUMMARY = null;
   var LOCALSTART = {};                     // clock starts pressed on this phone, until the server confirms them
@@ -532,7 +532,28 @@
     if (!ATH) api('GET', '/api/athletes').then(function (d) { ATH = d.athletes; render(); }, fail);
     if (tab === 'team' && !USERS) api('GET', '/api/users').then(function (d) { USERS = d.users; render(); }, fail);
     if (tab === 'day' && !AUDIT) api('GET', '/api/admin/audit?limit=60').then(function (d) { AUDIT = d.audit; render(); }, fail);
-    if (tab === 'ads' && !ADS) api('GET', '/api/admin/ads').then(function (d) { ADS = d.ads; render(); }, fail);
+    if (tab === 'ads' && !ADS && !ADS_LOADING && !ADS_ERROR) loadAds();
+  }
+  function loadAds() {
+    if (ADS_LOADING) return;
+    ADS_LOADING = true;
+    ADS_ERROR = null;
+    api('GET', '/api/admin/ads').then(function (d) {
+      if (!d || !Array.isArray(d.ads)) {
+        ADS_ERROR = 'The server returned an invalid ads response.';
+        return;
+      }
+      ADS = d.ads;
+    }, function (error) {
+      ADS_ERROR = error && error.status === 503 ? error.message
+        : error && error.network ? 'No connection. Check your connection, then retry.'
+          : error && error.status >= 500 ? 'Server error loading ads. Confirm database migration 0009 has been applied, then retry.'
+            : error && error.message ? error.message : 'Could not load ads.';
+      fail(error);
+    }).then(function () {
+      ADS_LOADING = false;
+      render();
+    });
   }
   var refreshAth = function () { return api('GET', '/api/athletes').then(function (d) { ATH = d.athletes; }); };
   var houseSelect = function (name, all) { return '<select name="' + name + '">' + (all ? '<option value="">All houses</option>' : '') + ST.houses.map(function (h) { return '<option value="' + h.id + '">' + esc(h.name) + '</option>'; }).join('') + '</select>'; };
@@ -897,7 +918,8 @@
       });
   }
   function adsSetup() {
-    if (!ADS) return '<div class="empty card">Loading ads…</div>';
+    if (ADS_ERROR) return '<div class="empty card" role="alert"><b>Could not load ads.</b><p>' + esc(ADS_ERROR) + '</p><button class="btn sm" data-act="retryads">Retry</button></div>';
+    if (ADS_LOADING || !ADS) return '<div class="empty card" role="status">Loading ads…</div>';
     var rows = ADS.map(function (ad) {
       var photo = ad.image_url ? '<img class="admin-ad-photo" src="' + esc(ad.image_url) + '" alt="" loading="lazy">' : '<span class="admin-ad-photo admin-ad-photo-empty">No image</span>';
       return '<article class="admin-ad-row">' + photo + '<div class="admin-ad-copy"><span class="eyebrow">' + esc(ad.club_name) + '</span><h3>' + esc(ad.title) + '</h3><small>' + esc(ad.representative_name) + ' · ' + esc(ad.phone) + '</small></div><span class="admin-ad-status ' + (ad.is_active ? 'active' : '') + '">' + (ad.is_active ? 'Visible' : 'Hidden') + '</span><div class="admin-ad-actions"><button class="btn sm" data-act="editad" data-id="' + ad.id + '">Edit</button><button class="btn sm" data-act="togglead" data-id="' + ad.id + '">' + (ad.is_active ? 'Hide' : 'Show') + '</button><button class="btn sm danger" data-act="deletead" data-id="' + ad.id + '">Delete</button></div></article>';
@@ -1153,6 +1175,7 @@
     addall: function (el) { var ev = evOf(+el.dataset.id); api('POST', '/api/events/' + el.dataset.id + '/entries', { all: true }).then(function (r) { toast(ev.kind === 'relay' ? r.configured + ' relay lineups ready' : r.added + ' added'); return Promise.all([load(), refreshAth()]); }).then(render, fail); },
     editevent: function (el) { editEvent(+el.dataset.id); },
     newad: function () { editAd(null); },
+    retryads: function () { ADS_ERROR = null; loadAds(); render(); },
     editad: function (el) { editAd(+el.dataset.id); },
     togglead: function (el) {
       var ad = ADS.filter(function (item) { return item.id === +el.dataset.id; })[0];

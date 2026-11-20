@@ -577,7 +577,14 @@ async function adsWithUrls(rows: AdRow[]) {
 export async function listAds(activeOnly = false) {
   let query = db().from("ads").select("*").order("updated_at", { ascending: false }).order("id");
   if (activeOnly) query = query.eq("is_active", true);
-  const rows = await q<AdRow[]>(query);
+  const { data, error } = await query;
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205") {
+      throw new HttpError(503, "The ads database is not set up. Apply migration 0009, then retry.");
+    }
+    throw dbError(error);
+  }
+  const rows = data as AdRow[];
   return adsWithUrls(rows);
 }
 
