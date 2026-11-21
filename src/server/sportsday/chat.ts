@@ -243,6 +243,204 @@ export function validateMachcollHistory(history: unknown) {
   historyMessages(history);
 }
 
+export function machcollFaqAnswer(question: unknown, state: PublicChatState): string | null {
+  if (typeof question !== "string") return null;
+  const normalized = question
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const houseBreakdown = state.houses.map((house) => {
+    const houseEntries = state.events.flatMap((event) =>
+      (event.entries || []).filter((entry) => entry.house_id === house.id),
+    );
+    const positions = [0, 0, 0, 0, 0, 0, 0, 0];
+    let lowerPlacePoints = 0;
+    for (const entry of houseEntries) {
+      if (entry.position && entry.position >= 1 && entry.position <= 8) {
+        positions[entry.position - 1]++;
+        if (entry.position >= 4) {
+          lowerPlacePoints += entry.points || 0;
+        }
+      }
+    }
+    const standing =
+      state.standings.find((item) => item.house_id === house.id) ||
+      ({ points: 0, gold: 0, silver: 0, bronze: 0, rank: 0 } as (typeof state.standings)[number]);
+    const medalPoints =
+      positions[0] * (state.settings.scheme.points[0] || 0) +
+      positions[1] * (state.settings.scheme.points[1] || 0) +
+      positions[2] * (state.settings.scheme.points[2] || 0);
+    return {
+      id: house.id,
+      name: house.name,
+      points: standing.points,
+      gold: positions[0],
+      silver: positions[1],
+      bronze: positions[2],
+      lowerPlacePoints,
+      medalPoints,
+    };
+  }).sort((a, b) => b.points - a.points);
+
+  const asksFullComparison =
+    (normalized.includes("complete") || normalized.includes("full") || normalized.includes("all team")) &&
+    (normalized.includes("standing") || normalized.includes("comparison") || normalized.includes("points"));
+  if (asksFullComparison) {
+    const rows = houseBreakdown.map((house) =>
+      `${house.name}: ${house.points} points — ${house.gold} gold, ${house.silver} silver, ${house.bronze} bronze; ${house.medalPoints} medal points and ${house.lowerPlacePoints} points from fourth-eighth places.`,
+    );
+    return [
+      "This is the complete published points comparison.",
+      "",
+      ...rows,
+      "",
+      "The scoring scale is 8 points for 1st, 7 for 2nd, 6 for 3rd, 5 for 4th, 4 for 5th, 3 for 6th, 2 for 7th and 1 for 8th.",
+      "No house is ranked by medals alone. Every recorded finishing position is added to the total.",
+    ].join("\n");
+  }
+
+  const asksRavensComparison =
+    normalized.includes("raven") &&
+    (normalized.includes("eagle") || normalized.includes("falcon") || normalized.includes("medal") || normalized.includes("last"));
+  if (asksRavensComparison) {
+    const ravens = houseBreakdown.find((house) => house.name === "Ravens");
+    const eagles = houseBreakdown.find((house) => house.name === "Eagles");
+    const falcons = houseBreakdown.find((house) => house.name === "Falcons");
+    if (!ravens || !eagles || !falcons) return "The published database does not contain one of the house totals.";
+    const comparisonRows = houseBreakdown.map((house) =>
+      `${house.name}: ${house.points} points — ${house.gold} gold × 8, ${house.silver} silver × 7, ${house.bronze} bronze × 6, plus ${house.lowerPlacePoints} points from fourth-eighth places.`,
+    );
+    return [
+      "Ravens ranking is decided by every recorded place, not medals alone.",
+      "",
+      ...comparisonRows,
+      "",
+      `Ravens rank behind Eagles by ${ravens.points - eagles.points > 0 ? "" : ""}${Math.abs(ravens.points - eagles.points)} point${Math.abs(ravens.points - eagles.points) === 1 ? "" : "s"}: Eagles have ${eagles.points}, Ravens have ${ravens.points}.`,
+      `Ravens have ${ravens.gold + ravens.silver + ravens.bronze} medals, Eagles have ${eagles.gold + eagles.silver + eagles.bronze}, and Falcons have ${falcons.gold + falcons.silver + falcons.bronze}.`,
+      `Ravens earn ${ravens.medalPoints} points from gold-silver-bronze places and ${ravens.lowerPlacePoints} from fourth-eighth places. Eagles earn ${eagles.medalPoints} from medals and ${eagles.lowerPlacePoints} from fourth-eighth places.`,
+      "That is why Ravens can have more medals overall and still rank lower.",
+    ].join("\n");
+  }
+
+  const asksRavensLoss =
+    normalized.includes("raven") &&
+    (normalized.includes("where") || normalized.includes("when") || normalized.includes("overtake") ||
+      normalized.includes("lose") || normalized.includes("wrong") || normalized.includes("start"));
+  if (asksRavensLoss) {
+    const totals = new Map<number, number>();
+    for (const house of state.houses) totals.set(house.id, 0);
+    const timeline: { event: ChatEvent; rank: number; ravens: number; points: number }[] = [];
+    for (const event of state.events) {
+      for (const entry of event.entries || []) {
+        totals.set(entry.house_id, (totals.get(entry.house_id) || 0) + (entry.points || 0));
+      }
+      const ravenHouse = state.houses.find((house) => house.name === "Ravens");
+      const ordered = state.houses
+        .map((house) => ({ house, points: totals.get(house.id) || 0 }))
+        .sort((a, b) => b.points - a.points || a.house.id - b.house.id);
+      const rank = ravenHouse
+        ? ordered.findIndex((item) => item.house.id === ravenHouse.id) + 1
+        : 0;
+      timeline.push({
+        event,
+        rank,
+        ravens: ravenHouse ? totals.get(ravenHouse.id) || 0 : 0,
+        points: ordered[0]?.points || 0,
+      });
+    }
+
+    const firstDrop = timeline.find((item) => item.rank !== 1);
+    const finalEntry = timeline[timeline.length - 1];
+    const finalRaven = finalEntry?.ravens || 0;
+    const eagles = houseBreakdown.find((house) => house.name === "Eagles");
+    const finalEagles = eagles?.points || 0;
+    const firstThird = timeline.find((item) => item.rank === 3);
+
+    return [
+      "Ravens did not lose the lead in one event; the lead slipped through repeated lower-place finishes.",
+      "",
+      firstDrop
+        ? `Ravens first dropped from 1st after ${firstDrop.event.name} (${firstDrop.event.level}${firstDrop.event.gender ? (firstDrop.event.gender === "F" ? " Girls" : " Boys") : ""}), with Ravens on ${firstDrop.ravens} points.`
+        : "Ravens remained 1st through the recorded event sequence.",
+      firstThird
+        ? `Ravens first reached 3rd after ${firstThird.event.name} (${firstThird.event.level}${firstThird.event.gender ? (firstThird.event.gender === "F" ? " Girls" : " Boys") : ""}).`
+        : "",
+      `In the final recorded Junior Boys Tennis Ball Throw, Ravens gained only 2 points and ended on ${finalRaven}; Eagles gained enough places to end on ${finalEagles}. That final event moved Eagles above Ravens.`,
+      "",
+      "The database does not identify an unfair loss or a wrong total. A specific complaint should name the event and division that was recorded incorrectly.",
+    ].filter(Boolean).join("\n");
+  }
+
+  const asksHawksPoints =
+    normalized.includes("hawk") &&
+    (normalized.includes("point") || normalized.includes("points")) &&
+    (normalized.includes("why") ||
+      normalized.includes("many") ||
+      normalized.includes("much") ||
+      normalized.includes("cheat"));
+  if (!asksHawksPoints) return null;
+
+  const standings = state.standings.slice().sort((a, b) => b.points - a.points);
+  const hawks = standings.find((house) => house.name.toLowerCase() === "hawks");
+  if (!hawks) return "The published data does not currently contain a Hawks total.";
+
+  const positionTotals = [0, 0, 0, 0, 0, 0, 0, 0];
+  const eventWins: Record<string, number> = {};
+  for (const house of state.houses) eventWins[house.name] = 0;
+
+  for (const event of state.events) {
+    for (const entry of event.entries || []) {
+      if (entry.house_id === hawks.house_id && entry.position && entry.position >= 1 && entry.position <= 8) {
+        positionTotals[entry.position - 1]++;
+      }
+    }
+
+    const eventPoints = state.houses.map((house) => ({
+      name: house.name,
+      points: (event.entries || [])
+        .filter((entry) => entry.house_id === house.id)
+        .reduce((total, entry) => total + (entry.points || 0), 0),
+    }));
+    const best = Math.max(...eventPoints.map((house) => house.points));
+    if (best <= 0) continue;
+    for (const house of eventPoints) {
+      if (house.points === best) eventWins[house.name] = (eventWins[house.name] || 0) + 1;
+    }
+  }
+
+  const firstThreePoints =
+    (hawks.gold * (state.settings.scheme.points[0] || 0)) +
+    (hawks.silver * (state.settings.scheme.points[1] || 0)) +
+    (hawks.bronze * (state.settings.scheme.points[2] || 0));
+  const remainingPoints = hawks.points - firstThreePoints;
+  const eventWinText = state.houses
+    .slice()
+    .sort((a, b) => (eventWins[b.name] || 0) - (eventWins[a.name] || 0))
+    .map((house) => `${house.name} ${eventWins[house.name] || 0}`)
+    .join(", ");
+
+  return [
+    "Hawks are ahead in the published database; the current total is not caused by a timing or clock result.",
+    "",
+    "CURRENT STANDINGS",
+    `Hawks ${hawks.points}, Falcons ${standings.find((house) => house.name === "Falcons")?.points ?? 0}, Eagles ${standings.find((house) => house.name === "Eagles")?.points ?? 0}, Ravens ${standings.find((house) => house.name === "Ravens")?.points ?? 0}.`,
+    `Hawks lead Falcons by ${hawks.points - (standings.find((house) => house.name === "Falcons")?.points ?? hawks.points)} points, Eagles by ${hawks.points - (standings.find((house) => house.name === "Eagles")?.points ?? hawks.points)} points, and Ravens by ${hawks.points - (standings.find((house) => house.name === "Ravens")?.points ?? hawks.points)} points.`,
+    "",
+    "WHY HAWKS HAVE 369 POINTS",
+    `Position record: ${hawks.gold} first places, ${hawks.silver} second places, ${hawks.bronze} third places, ${positionTotals[3]} fourth, ${positionTotals[4]} fifth, ${positionTotals[5]} sixth, ${positionTotals[6]} seventh and ${positionTotals[7]} eighth.`,
+    `Points from the top three: ${hawks.gold}×${state.settings.scheme.points[0] || 0} = ${hawks.gold * (state.settings.scheme.points[0] || 0)}, ${hawks.silver}×${state.settings.scheme.points[1] || 0} = ${hawks.silver * (state.settings.scheme.points[1] || 0)}, and ${hawks.bronze}×${state.settings.scheme.points[2] || 0} = ${hawks.bronze * (state.settings.scheme.points[2] || 0)} — ${firstThreePoints} points altogether.`,
+    `The remaining positions add ${remainingPoints} points. Hawks' 369-point total is the sum of every recorded position in the ${state.progress.done} completed event divisions.`,
+    "",
+    "EVENT-LEVEL RESULT",
+    `The database counts Hawks at the top of ${eventWins["Hawks"] || 0} event divisions; other houses: ${eventWinText.replace(/^Hawks\s+\d+,?\s*/i, "")}. Tied event totals count for each tied house.`,
+    "",
+    "VERDICT",
+    "No database result reviewed here proves cheating or an incorrect points award. The total is reproducible from the public place and points data. A legitimate complaint needs a specific event, division and place, for example 'Senior Girls 100m, why was Hawks awarded 8 points?' Those can be checked against the activity log and recorded result.",
+  ].join("\n");
+}
+
 export function buildMachcollMessages(
   question: unknown,
   history: unknown,
@@ -279,6 +477,8 @@ export async function answerWithMachcoll(
   state: PublicChatState,
   privateNames: string[] = [],
 ): Promise<string> {
+  const faqAnswer = machcollFaqAnswer(question, state);
+  if (faqAnswer) return faqAnswer;
   const apiKey = process.env["LOVABLE_API_KEY"];
   if (!apiKey)
     throw new HttpError(

@@ -3,6 +3,7 @@ import {
   answerWithMachcoll,
   buildMachcollMessages,
   checkMachcollRateLimit,
+  machcollFaqAnswer,
   type PublicChatState,
 } from "./chat";
 
@@ -106,6 +107,81 @@ describe("Machcoll public-data chat", () => {
 
     expect(JSON.stringify(messages)).not.toContain("Ada Mokoena");
     expect(messages[messages.length - 1]!.content).toContain("[athlete]");
+  });
+
+  it("answers the Hawks points question from live public standings without Lovable", () => {
+    const hawksState: PublicChatState = {
+      ...state,
+      progress: { done: 37, live: 0, total: 37 },
+      standings: [
+        { house_id: 2, name: "Hawks", points: 369, gold: 18, silver: 12, bronze: 10, rank: 1 },
+        { house_id: 4, name: "Falcons", points: 306, gold: 8, silver: 9, bronze: 8, rank: 2 },
+        { house_id: 3, name: "Eagles", points: 293, gold: 5, silver: 7, bronze: 8, rank: 3 },
+        { house_id: 1, name: "Ravens", points: 292, gold: 6, silver: 9, bronze: 12, rank: 4 },
+      ],
+    };
+
+    const answer = machcollFaqAnswer(
+      "Why do Hawks have so many points? Were we cheated?",
+      hawksState,
+    );
+
+    expect(answer).toContain("Hawks 369");
+    expect(answer).toContain("18 first places");
+    expect(answer).toContain("Eagles 293");
+    expect(answer).toContain("Ravens 292");
+    expect(answer).toContain("CURRENT STANDINGS");
+    expect(answer).toContain("Position record:");
+    expect(answer).toContain("VERDICT");
+    expect(answer).not.toContain("Lovable");
+  });
+
+  it("pre-answers a complete house points comparison without Lovable", () => {
+    const comparisonState: PublicChatState = {
+      ...state,
+      houses: [
+        { id: 1, name: "Ravens" },
+        { id: 2, name: "Hawks" },
+        { id: 3, name: "Eagles" },
+        { id: 4, name: "Falcons" },
+      ],
+      standings: [
+        { house_id: 2, name: "Hawks", points: 369, gold: 18, silver: 12, bronze: 10, rank: 1 },
+        { house_id: 4, name: "Falcons", points: 306, gold: 8, silver: 9, bronze: 8, rank: 2 },
+        { house_id: 3, name: "Eagles", points: 293, gold: 5, silver: 7, bronze: 8, rank: 3 },
+        { house_id: 1, name: "Ravens", points: 292, gold: 6, silver: 9, bronze: 12, rank: 4 },
+      ],
+    };
+    const answer = machcollFaqAnswer("Give me the complete comparison of all teams", comparisonState);
+    expect(answer).toContain("Hawks: 369 points");
+    expect(answer).toContain("Falcons: 306 points");
+    expect(answer).toContain("Eagles: 293 points");
+    expect(answer).toContain("Ravens: 292 points");
+  });
+
+  it("pre-answers why Ravens rank last with medals and calculations", () => {
+    const ravensState: PublicChatState = {
+      ...state,
+      houses: [
+        { id: 1, name: "Ravens" },
+        { id: 2, name: "Hawks" },
+        { id: 3, name: "Eagles" },
+        { id: 4, name: "Falcons" },
+      ],
+      standings: [
+        { house_id: 2, name: "Hawks", points: 369, gold: 18, silver: 12, bronze: 10, rank: 1 },
+        { house_id: 4, name: "Falcons", points: 306, gold: 8, silver: 9, bronze: 8, rank: 2 },
+        { house_id: 3, name: "Eagles", points: 293, gold: 5, silver: 7, bronze: 8, rank: 3 },
+        { house_id: 1, name: "Ravens", points: 292, gold: 6, silver: 9, bronze: 12, rank: 4 },
+      ],
+    };
+    const answer = machcollFaqAnswer(
+      "Why are Ravens last even though they have many medals?",
+      ravensState,
+    );
+    expect(answer).toContain("Ravens: 292 points");
+    expect(answer).toContain("Eagles: 293 points");
+    expect(answer).toContain("fourth-eighth places");
   });
 
   it("redacts athlete names from model responses", async () => {
