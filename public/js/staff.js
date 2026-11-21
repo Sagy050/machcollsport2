@@ -20,8 +20,20 @@
     setTimeout(function () { d.remove(); }, 2600);
   }
   function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms || 25); } catch (e) { /* not supported */ } }
+  var SPORTS_DAY_DEVICE_KEY = 'sportsday-device-id';
+  function sportsDayDeviceId() {
+    var id = localStorage.getItem(SPORTS_DAY_DEVICE_KEY);
+    if (id && /^[A-Za-z0-9_-]{16,128}$/.test(id)) return id;
+    var bytes = new Uint8Array(24);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+    else for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    id = Array.from(bytes, function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
+    localStorage.setItem(SPORTS_DAY_DEVICE_KEY, id);
+    return id;
+  }
+  var SPORTS_DAY_DEVICE_ID = sportsDayDeviceId();
   function api(method, url, body) {
-    return fetch(url, { method: method, credentials: 'same-origin', headers: Object.assign({ 'X-Requested-With': 'sportsday' }, body !== undefined ? { 'Content-Type': 'application/json' } : {}), body: body !== undefined ? JSON.stringify(body) : undefined })
+    return fetch(url, { method: method, credentials: 'same-origin', headers: Object.assign({ 'X-Requested-With': 'sportsday', 'X-Sportsday-Device': SPORTS_DAY_DEVICE_ID }, body !== undefined ? { 'Content-Type': 'application/json' } : {}), body: body !== undefined ? JSON.stringify(body) : undefined })
       .catch(function () { var e = new Error('No connection'); e.network = true; throw e; })
       .then(function (r) {
         return r.text().then(function (t) {
@@ -424,22 +436,24 @@
       { key: 'events', n: '02', title: 'Events & entries', note: ST.events.length + ' scheduled' },
       { key: 'team', n: '03', title: 'Staff team', note: 'Accounts & access' },
       { key: 'day', n: '04', title: 'Meet settings', note: 'Scoring & results' },
-      { key: 'ads', n: '05', title: 'Manage Ads', note: ADS ? ADS.length + ' listings' : 'Club marketplace' }
+      { key: 'ads', n: '05', title: 'Manage Ads', note: ADS ? ADS.length + ' listings' : 'Club marketplace' },
+      { key: 'activity', n: '06', title: 'Activity log', note: 'Devices & staff actions' }
     ];
-    var titles = { athletes: 'Athlete roster', events: 'Event programme', event: 'Event control', team: 'Officials', day: 'Scoring & results', ads: 'Manage Ads' };
+    var titles = { athletes: 'Athlete roster', events: 'Event programme', event: 'Event control', team: 'Officials', day: 'Scoring & results', ads: 'Manage Ads', activity: 'Activity log' };
     var descriptions = {
       athletes: 'Import the school roster once, then place athletes into events from one list.',
       events: 'Choose disciplines and divisions, then generate a live-ready programme from the roster.',
       event: 'Manage house teams, entries and heats for this event.',
       team: 'Add recorders and give each official the access they need.',
       day: 'Set house points, meet details and final-results controls.',
-      ads: 'Create and manage the club listings shown on the public marketplace.'
+      ads: 'Create and manage the club listings shown on the public marketplace.',
+      activity: 'Trace every staff change and sign-in to the device, user and time it came from.'
     };
     var nav = '<nav class="setup-rail" aria-label="Meet setup">' + sections.map(function (s) {
       var active = s.key === current;
       return '<a class="setup-step' + (active ? ' active' : '') + '" href="#/setup/' + s.key + '"' + (active ? ' aria-current="step"' : '') + '><span class="step-n">' + s.n + '</span><span class="step-copy"><b>' + s.title + '</b><small>' + s.note + '</small></span><span class="step-arrow" aria-hidden="true">↗</span></a>';
     }).join('') + '<div class="rail-note"><span class="rail-dot"></span><span><b>One meet. One live picture.</b><small>Changes show up across the event screens as you work.</small></span></div></nav>';
-    var content = tab === 'events' ? eventsSetup() : tab === 'event' ? eventManage(+r.b) : tab === 'team' ? teamSetup() : tab === 'day' ? daySetup() : tab === 'ads' ? adsSetup() : athletesSetup();
+    var content = tab === 'events' ? eventsSetup() : tab === 'event' ? eventManage(+r.b) : tab === 'team' ? teamSetup() : tab === 'day' ? daySetup() : tab === 'ads' ? adsSetup() : tab === 'activity' ? activitySetup() : athletesSetup();
     var scheduled = ST.events.filter(function (e) { return e.status === 'scheduled'; }).length;
     return '<div class="setup-shell setup-command-center"><header class="setup-intro"><div class="intro-copy"><p class="eyebrow"><span></span> SPORTS DAY 2026 · COMMAND CENTER</p><h1>' + titles[tab] + '</h1><p>' + descriptions[tab] + '</p></div><div class="setup-stats"><span><i></i><b>' + scheduled + '</b><small>Scheduled</small></span><span><i></i><b>' + (ATH ? ATH.length : '–') + '</b><small>Athletes</small></span><span><i></i><b>' + ST.houses.length + '</b><small>Houses</small></span></div></header><div class="setup-grid">' + nav + '<div class="setup-content">' + content + '</div></div></div>';
   }
@@ -448,6 +462,7 @@
     if (!ATH) api('GET', '/api/athletes').then(function (d) { ATH = d.athletes; render(); }, fail);
     if (tab === 'team' && !USERS) api('GET', '/api/users').then(function (d) { USERS = d.users; render(); }, fail);
     if (tab === 'day' && !AUDIT) api('GET', '/api/admin/audit?limit=60').then(function (d) { AUDIT = d.audit; render(); }, fail);
+    if (tab === 'activity' && !AUDIT) api('GET', '/api/admin/audit?limit=1000').then(function (d) { AUDIT = d.audit; render(); }, fail);
     if (tab === 'ads' && !ADS && !ADS_LOADING && !ADS_ERROR) loadAds();
   }
   function loadAds() {
@@ -937,16 +952,48 @@
     var log = '<div class="card"><h3>Recent activity</h3>' + (AUDIT ? '<div class="tw"><table><tbody>' + AUDIT.map(function (a) { return '<tr><td style="white-space:nowrap"><small>' + new Date(a.ts).toLocaleTimeString() + '</small></td><td>' + esc(a.username || '–') + '</td><td>' + esc(a.action) + '</td><td><small>' + esc(auditDetail(a)) + '</small></td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">Loading…</div>') + '</div>';
     return settings + fin + danger + log;
   }
-  function auditDetail(a) {
-    if (a.action === 'login' || a.action === 'login.fail' || a.action === 'bootstrap.fail') {
-      try {
-        var detail = JSON.parse(a.detail || '{}');
-        return detail.device || 'Device not recorded for this login';
-      } catch (_) {
-        return 'Device not recorded for this login';
-      }
+  function activitySetup() {
+    if (!AUDIT) return '<div class="empty card">Loading activity…</div>';
+    var uniqueDevices = {};
+    var uniqueUsers = {};
+    var logins = 0;
+    var writes = 0;
+    var rows = AUDIT.map(function (a) {
+      var detail = auditDetailData(a);
+      if (detail.device_id) uniqueDevices[detail.device_id] = 1;
+      if (detail.device) uniqueDevices[detail.device] = 1;
+      if (a.username) uniqueUsers[a.username] = 1;
+      if (a.action === 'login' || a.action === 'login.fail') logins++;
+      else writes++;
+      var device = detail.device || 'Device not recorded';
+      var deviceId = detail.device_id ? detail.device_id.slice(0, 10) + '…' : 'No device ID';
+      var ip = detail.ip || 'IP not recorded';
+      var date = new Date(a.ts);
+      return '<tr><td style="white-space:nowrap"><b>' + esc(date.toLocaleDateString()) + '</b><br><small>' + esc(date.toLocaleTimeString()) + '</small></td><td><b>' + esc(a.username || 'System') + '</b></td><td><b>' + esc(device) + '</b><br><small title="' + esc(detail.device_id || '') + '">' + esc(deviceId) + '</small></td><td><span class="stt sch">' + esc(a.action) + '</span></td><td><small>' + esc(auditDetail(a)) + '</small></td><td><small>' + esc(ip) + '</small></td></tr>';
+    }).join('');
+    var deviceCount = Object.keys(uniqueDevices).length;
+    var userCount = Object.keys(uniqueUsers).length;
+    return '<div class="activity-page"><div class="activity-stats"><div class="card"><small>Recorded actions</small><b>' + writes + '</b></div><div class="card"><small>Sign-in attempts</small><b>' + logins + '</b></div><div class="card"><small>Staff accounts active</small><b>' + userCount + '</b></div><div class="card"><small>Devices seen</small><b>' + deviceCount + '</b></div></div><div class="card"><h2>Complete staff activity</h2><p class="help">The device label and persistent device ID identify the browser/device used for each action. MAC addresses are not available to web applications.</p><div class="tw"><table class="activity-table"><thead><tr><th>When</th><th>Staff</th><th>Device</th><th>Action</th><th>Details</th><th>IP</th></tr></thead><tbody>' + (rows || '<tr><td colspan="6">No activity recorded.</td></tr>') + '</tbody></table></div></div></div>';
+  }
+  function auditDetailData(a) {
+    try {
+      return JSON.parse(a.detail || '{}');
+    } catch (_) {
+      return { value: String(a.detail || '') };
     }
-    return String(a.detail || '').slice(0, 90);
+  }
+  function auditDetail(a) {
+    var detail = auditDetailData(a);
+    if (a.action === 'login' || a.action === 'login.fail' || a.action === 'bootstrap.fail') {
+      return detail.device ? detail.device : 'Device not recorded for this login';
+    }
+    if (detail.value) return String(detail.value).slice(0, 90);
+    var keys = Object.keys(detail).filter(function (key) { return key !== 'device' && key !== 'device_id' && key !== 'ip'; });
+    return keys.length ? keys.map(function (key) {
+      var value = detail[key];
+      if (typeof value === 'object') value = JSON.stringify(value);
+      return key + ': ' + String(value);
+    }).join(' · ').slice(0, 180) : 'No additional details';
   }
 
   /* ------------------------------------------------------------------ actions (one click handler for everything) */

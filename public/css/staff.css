@@ -349,7 +349,7 @@ body:has(#login:not([hidden])) { display: grid; min-height: 100vh; background: #
 .setup-stats b { color: #fafafa; font: 700 13px ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 .setup-stats small { color: #a1a1aa; font-size: 13px; font-weight: 650; }
 .setup-grid { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 14px; }
-.setup-rail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 4px; border: 1px solid rgba(63, 63, 70, .8); border-radius: 13px; background: rgba(24, 24, 27, .72); }
+.setup-rail { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 3px; padding: 4px; border: 1px solid rgba(63, 63, 70, .8); border-radius: 13px; background: rgba(24, 24, 27, .72); }
 .setup-step { display: grid; min-width: 0; grid-template-columns: 23px minmax(0, 1fr); align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid transparent; border-radius: 9px; color: #a1a1aa; text-decoration: none; transition: background .15s, color .15s, border-color .15s; }
 .setup-step:hover { background: rgba(63, 63, 70, .35); color: #f4f4f5; }
 .setup-step.active { border-color: rgba(14, 165, 233, .22); background: rgba(14, 165, 233, .12); color: #bae6fd; box-shadow: 0 0 22px rgba(14, 165, 233, .08); }
@@ -363,6 +363,13 @@ body:has(#login:not([hidden])) { display: grid; min-height: 100vh; background: #
 .step-arrow { display: none; }
 .rail-note { display: none; }
 .setup-content { display: grid; min-width: 0; gap: 12px; }
+.activity-page { display: grid; min-width: 0; gap: 12px; }
+.activity-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.activity-stats .card { display: grid; gap: 4px; padding: 14px; }
+.activity-stats .card small { color: #71717a; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.activity-stats .card b { font: 800 28px/1 "Plus Jakarta Sans", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.activity-table { min-width: 820px; }
+.activity-table th, .activity-table td { vertical-align: middle; }
 .setup-content > .card:first-child { margin: 0; }
 .setup-content .card h2::before { width: 3px; height: 18px; margin-right: 9px; border-radius: 2px; background: #38bdf8; content: ""; }
 .setup-content .card h2 { display: flex; align-items: center; }
@@ -635,6 +642,7 @@ dialog .btn.danger[data-act-out]:hover { background: rgba(244, 63, 94, .1); }
   .setup-stats > span { min-height: 30px; gap: 6px; padding: 4px 8px; }
   .setup-stats small { font-size: 13px; }
   .setup-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .activity-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .step-copy small { font-size: 13px; }
   .import-actions { flex-direction: column; align-items: stretch; }
   .dropzone { min-width: 0; }

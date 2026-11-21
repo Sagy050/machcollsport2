@@ -26,6 +26,9 @@ export type Actor = {
   username: string;
   display_name: string;
   role: "admin" | "recorder";
+  device_id?: string;
+  device_label?: string;
+  ip?: string;
 } | null;
 type Body = Any;
 
@@ -89,6 +92,15 @@ export async function audit(
   detail: unknown,
   usernameOverride?: string,
 ) {
+  let auditDetail: Record<string, unknown> = {};
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    auditDetail = detail as Record<string, unknown>;
+  } else if (typeof detail === "string" && detail) {
+    auditDetail = { value: detail };
+  }
+  if (actor?.device_id) auditDetail.device_id = actor.device_id;
+  if (actor?.device_label) auditDetail.device = actor.device_label;
+  if (actor?.ip) auditDetail.ip = actor.ip;
   await db()
     .from("audit")
     .insert({
@@ -96,7 +108,7 @@ export async function audit(
       user_id: actor ? actor.id : null,
       username: usernameOverride ?? (actor ? actor.username : null),
       action,
-      detail: typeof detail === "string" ? detail : JSON.stringify(detail || ""),
+      detail: JSON.stringify(auditDetail),
     });
 }
 

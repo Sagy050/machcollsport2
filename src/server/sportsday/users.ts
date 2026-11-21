@@ -115,7 +115,20 @@ export async function sessionUser(request: Request): Promise<SessionUser | null>
   const role = (await roleMap([p.id])).get(p.id);
   if (!role) return null;
   if (row.expires_at - now() < SESSION_MS / 2) await q(db().from("staff_sessions").update({ expires_at: now() + SESSION_MS }).eq("token_hash", h));
-  return { id: p.staff_no, uid: p.id, username: p.username!, display_name: p.display_name || p.username!, role, token: h };
+  const ip = request.headers.get("cf-connecting-ip") || (request.headers.get("x-forwarded-for") || "").split(",")[0]?.trim() || "?";
+  const deviceId = request.headers.get("x-sportsday-device") || undefined;
+  const deviceLabel = identifyDevice(request.headers.get("user-agent"), request.headers.get("sec-ch-ua-model"));
+  return {
+    id: p.staff_no,
+    uid: p.id,
+    username: p.username!,
+    display_name: p.display_name || p.username!,
+    role,
+    token: h,
+    device_id: deviceId,
+    device_label: deviceLabel,
+    ip,
+  };
 }
 
 const killSessions = (uid: string) => q(db().from("staff_sessions").delete().eq("profile_id", uid));
@@ -125,6 +138,7 @@ export async function login(
   ip: string,
   userAgent: string | null,
   modelHint: string | null,
+  deviceId: string | null = null,
 ) {
   const username = str(body.username, { field: "Username", max: 120 });
   const password = typeof body.password === "string" ? body.password.slice(0, 200) : "";
@@ -151,8 +165,17 @@ export async function login(
   const token = randomToken();
   await q(db().from("staff_sessions").insert({ token_hash: await sha256(token), profile_id: p.id, created_at: now(), expires_at: now() + SESSION_MS }));
   await q(db().from("profiles").update({ last_login: now() }).eq("id", p.id));
-  const actor = { id: p.staff_no, uid: p.id, username: p.username!, display_name: p.display_name || p.username!, role };
-  await audit(actor, "login", { device });
+  const actor = {
+    id: p.staff_no,
+    uid: p.id,
+    username: p.username!,
+    display_name: p.display_name || p.username!,
+    role,
+    device_id: deviceId || undefined,
+    device_label: device,
+    ip,
+  };
+  await audit(actor, "login", { device, ip });
   return { token, user: { id: actor.id, username: actor.username, display_name: actor.display_name, role } };
 }
 

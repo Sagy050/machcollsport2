@@ -186,6 +186,7 @@ route("POST", "/api/login", "public", async ({ request, body }) => {
     clientIp(request),
     request.headers.get("user-agent"),
     request.headers.get("sec-ch-ua-model"),
+    request.headers.get("x-sportsday-device"),
   );
   return json({ user: r.user }, 200, {
     "Set-Cookie": users.cookieHeader(r.token, Math.floor(users.SESSION_MS / 1000)),
