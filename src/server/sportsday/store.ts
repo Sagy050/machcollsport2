@@ -20,13 +20,26 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
-export type Actor = { id: number; uid: string; username: string; display_name: string; role: "admin" | "recorder" } | null;
+export type Actor = {
+  id: number;
+  uid: string;
+  username: string;
+  display_name: string;
+  role: "admin" | "recorder";
+} | null;
 type Body = Any;
 
 const db = () => supabaseAdmin as unknown as SupabaseClient;
 const now = () => Date.now();
 
-export const LEVELS = ["Lower Junior", "Junior", "Intermediate", "Senior", "Open", "Mixed"] as const;
+export const LEVELS = [
+  "Lower Junior",
+  "Junior",
+  "Intermediate",
+  "Senior",
+  "Open",
+  "Mixed",
+] as const;
 const ATHLETE_LEVELS = ["Lower Junior", "Junior", "Intermediate", "Senior", "Open"] as const;
 const GENDERS = ["F", "M"] as const;
 const KINDS = ["individual", "relay"] as const;
@@ -48,7 +61,9 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 /** Unwrap a query result; map database conflicts to friendly 409s. */
-async function q<T = Any>(p: PromiseLike<{ data: Any; error: Any; count?: number | null }>): Promise<T> {
+async function q<T = Any>(
+  p: PromiseLike<{ data: Any; error: Any; count?: number | null }>,
+): Promise<T> {
   const { data, error } = await p;
   if (error) throw dbError(error);
   return data as T;
@@ -60,13 +75,20 @@ async function countOf(p: PromiseLike<{ count: number | null; error: Any }>): Pr
 }
 export function dbError(error: Any): Error {
   const code = String(error?.code || "");
-  if (code === "P0001") return new HttpError(409, error?.message || "That change conflicts with existing data");
-  if (code === "23505" || code === "23503" || code === "23514") return new HttpError(409, "That change conflicts with existing data");
+  if (code === "P0001")
+    return new HttpError(409, error?.message || "That change conflicts with existing data");
+  if (code === "23505" || code === "23503" || code === "23514")
+    return new HttpError(409, "That change conflicts with existing data");
   return new Error(error?.message || "Database error");
 }
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => "\\" + c);
 
-export async function audit(actor: Actor, action: string, detail: unknown, usernameOverride?: string) {
+export async function audit(
+  actor: Actor,
+  action: string,
+  detail: unknown,
+  usernameOverride?: string,
+) {
   await db()
     .from("audit")
     .insert({
@@ -78,36 +100,81 @@ export async function audit(actor: Actor, action: string, detail: unknown, usern
     });
 }
 
+export async function machcollUsageStatus(
+  deviceKey: string,
+  usageDay: string,
+): Promise<boolean | null> {
+  const { data, error } = await db()
+    .from("machcoll_daily_usage")
+    .select("device_key")
+    .eq("device_key", deviceKey)
+    .eq("usage_day", usageDay)
+    .maybeSingle();
+  if (error) {
+    if (error.code === "PGRST205" || error.code === "42P01") return null;
+    throw dbError(error);
+  }
+  return !!data;
+}
+
+export async function consumeMachcollUsage(
+  deviceKey: string,
+  usageDay: string,
+): Promise<boolean | null> {
+  const { error } = await db()
+    .from("machcoll_daily_usage")
+    .insert({ device_key: deviceKey, usage_day: usageDay });
+  if (!error) return true;
+  if (error.code === "23505") return false;
+  if (error.code === "PGRST205" || error.code === "42P01") return null;
+  throw dbError(error);
+}
+
 // ---- version + settings + houses -----------------------------------------------------------------
 export async function version(): Promise<number> {
-  const row = await q<{ v: number } | null>(db().from("live_version").select("v").eq("id", 1).maybeSingle());
+  const row = await q<{ v: number } | null>(
+    db().from("live_version").select("v").eq("id", 1).maybeSingle(),
+  );
   return row ? Number(row.v) : 0;
 }
 export async function getSettings(): Promise<Settings> {
-  const row = await q<{ value: Partial<Settings> } | null>(db().from("app_settings").select("value").eq("key", "settings").maybeSingle());
+  const row = await q<{ value: Partial<Settings> } | null>(
+    db().from("app_settings").select("value").eq("key", "settings").maybeSingle(),
+  );
   return { ...DEFAULT_SETTINGS, ...(row ? row.value : {}) };
 }
-const saveSettings = (s: Settings) => q(db().from("app_settings").upsert({ key: "settings", value: s }));
-export const listHouses = () => q<HouseRow[]>(db().from("houses").select("id,name,color,sort").order("sort").order("id"));
+const saveSettings = (s: Settings) =>
+  q(db().from("app_settings").upsert({ key: "settings", value: s }));
+export const listHouses = () =>
+  q<HouseRow[]>(db().from("houses").select("id,name,color,sort").order("sort").order("id"));
 async function getHouse(id: unknown): Promise<HouseRow> {
-  const h = await q<HouseRow | null>(db().from("houses").select("id,name,color,sort").eq("id", int(id, { field: "House" })).maybeSingle());
+  const h = await q<HouseRow | null>(
+    db()
+      .from("houses")
+      .select("id,name,color,sort")
+      .eq("id", int(id, { field: "House" }))
+      .maybeSingle(),
+  );
   if (!h) throw bad("Unknown house");
   return h;
 }
 
 export async function updateSettings(actor: Actor, b: Body) {
   const next = { ...(await getSettings()) };
-  if (b.title !== undefined) next.title = str(b.title, { field: "Title", required: true, max: 120 });
+  if (b.title !== undefined)
+    next.title = str(b.title, { field: "Title", required: true, max: 120 });
   if (b.venue !== undefined) next.venue = str(b.venue, { field: "Venue", max: 120 });
   if (b.date !== undefined) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(b.date) || isNaN(Date.parse(b.date))) throw bad("Date must look like 2026-11-20");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(b.date) || isNaN(Date.parse(b.date)))
+      throw bad("Date must look like 2026-11-20");
     next.date = b.date;
   }
   if (b.start !== undefined) {
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(b.start)) throw bad("Start time must look like 08:00");
     next.start = b.start;
   }
-  if (b.nameDisplay !== undefined) next.nameDisplay = oneOf(b.nameDisplay, ["full", "initial"] as const, "Name display");
+  if (b.nameDisplay !== undefined)
+    next.nameDisplay = oneOf(b.nameDisplay, ["full", "initial"] as const, "Name display");
   if (b.scheme !== undefined) next.scheme = S.normaliseScheme(b.scheme);
   let houses: { id: number; name: string; color: string }[] | null = null;
   if (b.houses !== undefined) {
@@ -118,48 +185,87 @@ export async function updateSettings(actor: Actor, b: Body) {
       await getHouse(id);
       const color = String(h.color || "");
       if (!/^#[0-9a-fA-F]{6}$/.test(color)) throw bad("House colours must look like #2ec46a");
-      houses.push({ id, name: str(h.name, { field: "House name", required: true, max: 30 }), color });
+      houses.push({
+        id,
+        name: str(h.name, { field: "House name", required: true, max: 30 }),
+        color,
+      });
     }
-    if (new Set(houses.map((h) => h.name.toLowerCase())).size !== houses.length) throw bad("House names must be different");
+    if (new Set(houses.map((h) => h.name.toLowerCase())).size !== houses.length)
+      throw bad("House names must be different");
   }
   await saveSettings(next);
   if (houses) {
     // Two-step rename so swapping names between houses never hits the unique name rule.
-    for (const h of houses) await q(db().from("houses").update({ name: `~${h.id}~${h.name}` }).eq("id", h.id));
-    for (const h of houses) await q(db().from("houses").update({ name: h.name, color: h.color }).eq("id", h.id));
+    for (const h of houses)
+      await q(
+        db()
+          .from("houses")
+          .update({ name: `~${h.id}~${h.name}` })
+          .eq("id", h.id),
+      );
+    for (const h of houses)
+      await q(db().from("houses").update({ name: h.name, color: h.color }).eq("id", h.id));
   }
   await audit(actor, "settings.update", { scheme: next.scheme, nameDisplay: next.nameDisplay });
   return { settings: await getSettings(), houses: await listHouses() };
 }
 
 export async function setFinalised(actor: Actor, finalised: boolean, force?: boolean) {
-  const open = await countOf(db().from("sd_events").select("id", { count: "exact", head: true }).in("status", ["scheduled", "live"]));
-  if (finalised && open > 0 && !force) throw new HttpError(409, `${open} event${open === 1 ? " is" : "s are"} not finished yet`, { open });
+  const open = await countOf(
+    db()
+      .from("sd_events")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["scheduled", "live"]),
+  );
+  if (finalised && open > 0 && !force)
+    throw new HttpError(409, `${open} event${open === 1 ? " is" : "s are"} not finished yet`, {
+      open,
+    });
   const s = await getSettings();
   s.finalised = !!finalised;
   s.finalisedAt = finalised ? now() : null;
   await saveSettings(s);
   if (finalised) {
-    const completed = await q<{ id: number }[]>(db().from("sd_events").select("id").eq("status", "completed"));
-    const live = await q<{ id: number }[]>(db().from("sd_events").select("id").eq("status", "live"));
+    const completed = await q<{ id: number }[]>(
+      db().from("sd_events").select("id").eq("status", "completed"),
+    );
+    const live = await q<{ id: number }[]>(
+      db().from("sd_events").select("id").eq("status", "live"),
+    );
     let liveWithResults: number[] = [];
     if (live.length) {
       const rows = await q<{ event_id: number }[]>(
-        db().from("sd_entries").select("event_id").in("event_id", live.map((e) => e.id)).eq("status", "ok").not("perf_value", "is", null),
+        db()
+          .from("sd_entries")
+          .select("event_id")
+          .in(
+            "event_id",
+            live.map((e) => e.id),
+          )
+          .eq("status", "ok")
+          .not("perf_value", "is", null),
       );
       liveWithResults = [...new Set(rows.map((r) => r.event_id))];
     }
     const ids = [...completed.map((e) => e.id), ...liveWithResults];
-    if (ids.length) await q(db().from("sd_events").update({ status: "final", updated_at: now() }).in("id", ids));
+    if (ids.length)
+      await q(db().from("sd_events").update({ status: "final", updated_at: now() }).in("id", ids));
   } else {
-    await q(db().from("sd_events").update({ status: "completed", updated_at: now() }).eq("status", "final"));
+    await q(
+      db()
+        .from("sd_events")
+        .update({ status: "completed", updated_at: now() })
+        .eq("status", "final"),
+    );
   }
   await audit(actor, finalised ? "day.finalise" : "day.reopen", { open });
   return s;
 }
 
 // ---- events --------------------------------------------------------------------------------------
-const getEvent = (id: number) => q<EventRow | null>(db().from("sd_events").select("*").eq("id", id).maybeSingle());
+const getEvent = (id: number) =>
+  q<EventRow | null>(db().from("sd_events").select("*").eq("id", id).maybeSingle());
 async function mustEvent(id: number) {
   const e = await getEvent(id);
   if (!e) throw new HttpError(404, "Event not found");
@@ -167,37 +273,73 @@ async function mustEvent(id: number) {
 }
 const hasResults = async (eventId: number) => {
   const [entries, teams] = await Promise.all([
-    countOf(db().from("sd_entries").select("id", { count: "exact", head: true }).eq("event_id", eventId).or("perf_value.not.is.null,status.neq.ok")),
-    q<{ id: number }[]>(db().from("sd_entries").select("id").eq("event_id", eventId).is("athlete_id", null)),
+    countOf(
+      db()
+        .from("sd_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", eventId)
+        .or("perf_value.not.is.null,status.neq.ok"),
+    ),
+    q<{ id: number }[]>(
+      db().from("sd_entries").select("id").eq("event_id", eventId).is("athlete_id", null),
+    ),
   ]);
   if (entries) return true;
   if (!teams.length) return false;
   return (
     (await countOf(
-      db().from("relay_splits").select("entry_id", { count: "exact", head: true }).in("entry_id", teams.map((team) => team.id)),
+      db()
+        .from("relay_splits")
+        .select("entry_id", { count: "exact", head: true })
+        .in(
+          "entry_id",
+          teams.map((team) => team.id),
+        ),
     )) > 0
   );
 };
 const assertEditable = (actor: Actor, ev: EventRow) => {
-  if (ev.status === "final" && actor?.role !== "admin") throw new HttpError(423, "This event is finalised. Ask an admin to reopen it");
+  if (ev.status === "final" && actor?.role !== "admin")
+    throw new HttpError(423, "This event is finalised. Ask an admin to reopen it");
 };
 
-type EventFields = { name: string; level: string; gender: string | null; kind: string; measure: string; sched_time: string; relay_legs: number };
+type EventFields = {
+  name: string;
+  level: string;
+  gender: string | null;
+  kind: string;
+  measure: string;
+  sched_time: string;
+  relay_legs: number;
+};
 function cleanEvent(b: Body, cur: EventRow | null): EventFields {
-  const kind = b.kind !== undefined || !cur ? oneOf(b.kind || "individual", KINDS, "Kind") : cur.kind;
+  const kind =
+    b.kind !== undefined || !cur ? oneOf(b.kind || "individual", KINDS, "Kind") : cur.kind;
   const defaultRelayLegs = /8\s*[x×]\s*50/i.test(String(b.name ?? cur?.name ?? "")) ? 8 : 4;
   const f: EventFields = {
-    name: b.name !== undefined || !cur ? str(b.name, { field: "Event name", required: true, max: 80 }) : cur.name,
+    name:
+      b.name !== undefined || !cur
+        ? str(b.name, { field: "Event name", required: true, max: 80 })
+        : cur.name,
     level: b.level !== undefined || !cur ? oneOf(b.level, LEVELS, "Level") : cur.level,
     gender: cur ? cur.gender : null,
     kind,
-    measure: kind === "relay" ? "time" : b.measure !== undefined || !cur ? oneOf(b.measure || "time", MEASURES, "Measure") : cur.measure,
+    measure:
+      kind === "relay"
+        ? "time"
+        : b.measure !== undefined || !cur
+          ? oneOf(b.measure || "time", MEASURES, "Measure")
+          : cur.measure,
     sched_time: cur ? cur.sched_time : "",
-    relay_legs: kind === "relay"
-      ? relayLegCount(b.relay_legs !== undefined ? b.relay_legs : cur?.relay_legs || defaultRelayLegs)
-      : 0,
+    relay_legs:
+      kind === "relay"
+        ? relayLegCount(
+            b.relay_legs !== undefined ? b.relay_legs : cur?.relay_legs || defaultRelayLegs,
+          )
+        : 0,
   };
-  if (b.gender !== undefined) f.gender = b.gender === "" || b.gender === null ? null : oneOf(b.gender, GENDERS, "Gender");
+  if (b.gender !== undefined)
+    f.gender = b.gender === "" || b.gender === null ? null : oneOf(b.gender, GENDERS, "Gender");
   if (b.sched_time !== undefined) {
     const t = str(b.sched_time, { field: "Time", max: 5 });
     if (t && !/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) throw bad("Time must look like 09:30");
@@ -208,7 +350,14 @@ function cleanEvent(b: Body, cur: EventRow | null): EventFields {
 }
 
 async function nextSort() {
-  const row = await q<{ sort: number } | null>(db().from("sd_events").select("sort").order("sort", { ascending: false }).limit(1).maybeSingle());
+  const row = await q<{ sort: number } | null>(
+    db()
+      .from("sd_events")
+      .select("sort")
+      .order("sort", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  );
   return (row ? row.sort : 0) + 1;
 }
 async function insertEvents(list: EventFields[]): Promise<EventRow[]> {
@@ -218,7 +367,15 @@ async function insertEvents(list: EventFields[]): Promise<EventRow[]> {
   return q<EventRow[]>(
     db()
       .from("sd_events")
-      .insert(list.map((f, i) => ({ ...f, status: "scheduled", sort: base + i, created_at: t, updated_at: t })))
+      .insert(
+        list.map((f, i) => ({
+          ...f,
+          status: "scheduled",
+          sort: base + i,
+          created_at: t,
+          updated_at: t,
+        })),
+      )
       .select("*")
       .order("id"),
   );
@@ -237,7 +394,9 @@ export async function createEvent(actor: Actor, b: Body) {
 export async function bulkEvents(actor: Actor, b: Body) {
   const items = Array.isArray(b.items) ? b.items : [];
   if (!items.length) throw bad("Choose at least one event");
-  const levels = (Array.isArray(b.levels) && b.levels.length ? b.levels : ATHLETE_LEVELS).map((l: unknown) => oneOf(l, ATHLETE_LEVELS, "Level"));
+  const levels = (Array.isArray(b.levels) && b.levels.length ? b.levels : ATHLETE_LEVELS).map(
+    (l: unknown) => oneOf(l, ATHLETE_LEVELS, "Level"),
+  );
   const genders = (Array.isArray(b.genders) ? b.genders : ["F", "M"]).map((g: unknown) =>
     g === "Mixed" ? null : oneOf(g, GENDERS, "Gender"),
   );
@@ -246,16 +405,20 @@ export async function bulkEvents(actor: Actor, b: Body) {
     const name = str(it.name, { field: "Event name", required: true, max: 80 });
     const kind = oneOf(it.kind || "individual", KINDS, "Kind");
     const measure = kind === "relay" ? "time" : oneOf(it.measure || "time", MEASURES, "Measure");
-    const relayLegs = kind === "relay"
-      ? relayLegCount(it.relay_legs !== undefined ? it.relay_legs : /8\s*[x×]\s*50/i.test(name) ? 8 : 4)
-      : 0;
+    const relayLegs =
+      kind === "relay"
+        ? relayLegCount(
+            it.relay_legs !== undefined ? it.relay_legs : /8\s*[x×]\s*50/i.test(name) ? 8 : 4,
+          )
+        : 0;
     for (const level of levels)
       for (const g of genders.length ? genders : [null])
         plan.push({ name, level, gender: g, kind, measure, sched_time: "", relay_legs: relayLegs });
   }
   if (plan.length > 200) throw bad("That would create more than 200 events. Choose fewer.");
   const existing = await q<EventRow[]>(db().from("sd_events").select("name,level,gender,kind"));
-  const key = (e: { name: string; level: string; gender: string | null; kind: string }) => `${e.name}|${e.level}|${e.gender || ""}|${e.kind}`;
+  const key = (e: { name: string; level: string; gender: string | null; kind: string }) =>
+    `${e.name}|${e.level}|${e.gender || ""}|${e.kind}`;
   const seen = new Set(existing.map(key));
   const todo: EventFields[] = [];
   let skipped = 0;
@@ -279,14 +442,21 @@ export async function updateEvent(actor: Actor, id: number, b: Body) {
   const f = cleanEvent(b, cur);
   if ((f.kind !== cur.kind || f.measure !== cur.measure) && (await hasResults(id)))
     throw new HttpError(409, "Clear this event's results before changing its type");
-  await q(db().from("sd_events").update({ ...f, updated_at: now() }).eq("id", id));
+  await q(
+    db()
+      .from("sd_events")
+      .update({ ...f, updated_at: now() })
+      .eq("id", id),
+  );
   await audit(actor, "event.update", { id, ...f });
   return getEvent(id);
 }
 
 export async function deleteEvent(actor: Actor, id: number) {
   const cur = await mustEvent(id);
-  const n = await countOf(db().from("sd_entries").select("id", { count: "exact", head: true }).eq("event_id", id));
+  const n = await countOf(
+    db().from("sd_entries").select("id", { count: "exact", head: true }).eq("event_id", id),
+  );
   await q(db().from("sd_events").delete().eq("id", id));
   await audit(actor, "event.delete", { id, name: cur.name, entries: n });
   return { deleted: id, entriesDeleted: n };
@@ -303,13 +473,18 @@ async function signedMediaUrls(bucket: string, paths: (string | null | undefined
   const files = await q<{ path: string; signedUrl: string | null }[]>(
     db().storage.from(bucket).createSignedUrls(unique, MEDIA_URL_TTL_SECONDS),
   );
-  return new Map(files.filter((file) => file.signedUrl).map((file) => [file.path, file.signedUrl!]));
+  return new Map(
+    files.filter((file) => file.signedUrl).map((file) => [file.path, file.signedUrl!]),
+  );
 }
 
 export async function listAthletes() {
   const [athletes, entries, events] = await Promise.all([
     q<AthleteRow[]>(db().from("athletes").select("*").order("bib")),
-    selectAll<{ id: number; athlete_id: number | null; event_id: number }>("sd_entries", "id,athlete_id,event_id"),
+    selectAll<{ id: number; athlete_id: number | null; event_id: number }>(
+      "sd_entries",
+      "id,athlete_id,event_id",
+    ),
     selectAll<{ id: number; name: string }>("sd_events", "id,name"),
   ]);
   const eventById = new Map(events.map((event) => [event.id, event.name]));
@@ -319,10 +494,14 @@ export async function listAthletes() {
     eventIds.add(eventId);
     athleteEvents.set(athleteId, eventIds);
   };
-  for (const entry of entries) if (entry.athlete_id !== null) addEvent(entry.athlete_id, entry.event_id);
-  const urls = await signedMediaUrls(ATHLETE_PHOTO_BUCKET, athletes
-    .filter((athlete) => athlete.photo_consent === "granted")
-    .map((athlete) => athlete.photo_path));
+  for (const entry of entries)
+    if (entry.athlete_id !== null) addEvent(entry.athlete_id, entry.event_id);
+  const urls = await signedMediaUrls(
+    ATHLETE_PHOTO_BUCKET,
+    athletes
+      .filter((athlete) => athlete.photo_consent === "granted")
+      .map((athlete) => athlete.photo_path),
+  );
   return athletes.map((athlete) => {
     const eventIds = athleteEvents.get(athlete.id) || new Set<number>();
     const eventNames = [...eventIds]
@@ -333,13 +512,22 @@ export async function listAthletes() {
     return {
       ...visible,
       has_photo: !!photo_path && athlete.photo_consent === "granted",
-      photo_url: athlete.photo_consent === "granted" && photo_path ? urls.get(photo_path) || null : null,
+      photo_url:
+        athlete.photo_consent === "granted" && photo_path ? urls.get(photo_path) || null : null,
       entries: eventIds.size,
       event_names: eventNames,
     };
   });
 }
-const getAthlete = (id: number) => q<AthleteRow | null>(db().from("athletes").select("*").eq("id", id).maybeSingle());
+export async function chatAthleteNames() {
+  const rows = await q<{ full_name: string }[]>(db().from("athletes").select("full_name"));
+  return rows.map((row) => row.full_name);
+}
+export async function chatEventTimes() {
+  return q<{ id: number; sched_time: string }[]>(db().from("sd_events").select("id,sched_time"));
+}
+const getAthlete = (id: number) =>
+  q<AthleteRow | null>(db().from("athletes").select("*").eq("id", id).maybeSingle());
 
 function cleanBib(v: unknown) {
   const b = str(v, { field: "Bib", max: 8 }).toUpperCase();
@@ -347,20 +535,45 @@ function cleanBib(v: unknown) {
   return b;
 }
 function bibFrom(letter: string, bibs: string[]) {
-  const nums = bibs.map((b) => /^[A-Z](\d+)$/i.exec(b)).filter(Boolean).map((m) => Number((m as RegExpExecArray)[1]));
+  const nums = bibs
+    .map((b) => /^[A-Z](\d+)$/i.exec(b))
+    .filter(Boolean)
+    .map((m) => Number((m as RegExpExecArray)[1]));
   const n = (nums.length ? Math.max(...nums) : 0) + 1;
   return letter + String(n).padStart(2, "0");
 }
 async function nextBib(house: HouseRow) {
   const letter = (house.name.trim()[0] || "X").toUpperCase();
-  const rows = await q<{ bib: string }[]>(db().from("athletes").select("bib").like("bib", likeEscape(letter) + "%"));
-  return bibFrom(letter, rows.map((r) => r.bib));
+  const rows = await q<{ bib: string }[]>(
+    db()
+      .from("athletes")
+      .select("bib")
+      .like("bib", likeEscape(letter) + "%"),
+  );
+  return bibFrom(
+    letter,
+    rows.map((r) => r.bib),
+  );
 }
 
-type AthleteFields = { full_name: string; house_id: number; level: string | null; levels: string[]; gender: string | null; bib: string };
+type AthleteFields = {
+  full_name: string;
+  house_id: number;
+  level: string | null;
+  levels: string[];
+  gender: string | null;
+  bib: string;
+};
 function cleanLevels(value: unknown): string[] {
   const values = Array.isArray(value) ? value : String(value ?? "").split(/[;,|]/);
-  return [...new Set(values.map((item) => String(item ?? "").trim()).filter(Boolean).map((item) => oneOf(item, ATHLETE_LEVELS, "Age group")))];
+  return [
+    ...new Set(
+      values
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean)
+        .map((item) => oneOf(item, ATHLETE_LEVELS, "Age group")),
+    ),
+  ];
 }
 async function cleanAthlete(b: Body, cur: AthleteRow | null): Promise<AthleteFields> {
   const levels =
@@ -375,26 +588,40 @@ async function cleanAthlete(b: Body, cur: AthleteRow | null): Promise<AthleteFie
             : [];
   const primaryLevel = cur?.level && levels.includes(cur.level) ? cur.level : levels[0] || null;
   const out: AthleteFields = {
-    full_name: b.full_name !== undefined || !cur ? str(b.full_name, { field: "Full name", required: true, min: 2, max: 80 }) : cur.full_name,
+    full_name:
+      b.full_name !== undefined || !cur
+        ? str(b.full_name, { field: "Full name", required: true, min: 2, max: 80 })
+        : cur.full_name,
     house_id: b.house_id !== undefined || !cur ? (await getHouse(b.house_id)).id : cur.house_id,
     level: primaryLevel,
     levels,
     gender: cur ? cur.gender : null,
     bib: b.bib !== undefined ? cleanBib(b.bib) : cur ? cur.bib : "",
   };
-  if (b.gender !== undefined) out.gender = b.gender === "" || b.gender === null ? null : oneOf(b.gender, GENDERS, "Gender");
+  if (b.gender !== undefined)
+    out.gender = b.gender === "" || b.gender === null ? null : oneOf(b.gender, GENDERS, "Gender");
   return out;
 }
 const sameNameInHouse = (name: string, houseId: number) =>
-  q<{ id: number }[]>(db().from("athletes").select("id").ilike("full_name", likeEscape(name)).eq("house_id", houseId));
-const bibOwner = (bib: string) => q<{ id: number }[]>(db().from("athletes").select("id").eq("bib", bib));
+  q<{ id: number }[]>(
+    db().from("athletes").select("id").ilike("full_name", likeEscape(name)).eq("house_id", houseId),
+  );
+const bibOwner = (bib: string) =>
+  q<{ id: number }[]>(db().from("athletes").select("id").eq("bib", bib));
 
 export async function createAthlete(actor: Actor, b: Body) {
   const f = await cleanAthlete(b, null);
-  if ((await sameNameInHouse(f.full_name, f.house_id)).length) throw new HttpError(409, `${f.full_name} is already on the list for that house`);
+  if ((await sameNameInHouse(f.full_name, f.house_id)).length)
+    throw new HttpError(409, `${f.full_name} is already on the list for that house`);
   if (!f.bib) f.bib = await nextBib(await getHouse(f.house_id));
   else if ((await bibOwner(f.bib)).length) throw new HttpError(409, `Bib ${f.bib} is already used`);
-  const row = await q<AthleteRow>(db().from("athletes").insert({ ...f, created_at: now() }).select("*").single());
+  const row = await q<AthleteRow>(
+    db()
+      .from("athletes")
+      .insert({ ...f, created_at: now() })
+      .select("*")
+      .single(),
+  );
   await audit(actor, "athlete.create", f);
   return row;
 }
@@ -406,9 +633,15 @@ export async function updateAthlete(actor: Actor, id: number, b: Body) {
   if (!f.bib) f.bib = cur.bib;
   if ((await sameNameInHouse(f.full_name, f.house_id)).some((r) => r.id !== id))
     throw new HttpError(409, "Another athlete with that name is already in that house");
-  if ((await bibOwner(f.bib)).some((r) => r.id !== id)) throw new HttpError(409, `Bib ${f.bib} is already used`);
+  if ((await bibOwner(f.bib)).some((r) => r.id !== id))
+    throw new HttpError(409, `Bib ${f.bib} is already used`);
   await q(db().from("athletes").update(f).eq("id", id));
-  await q(db().from("sd_entries").update({ name: f.full_name, house_id: f.house_id, updated_at: now() }).eq("athlete_id", id));
+  await q(
+    db()
+      .from("sd_entries")
+      .update({ name: f.full_name, house_id: f.house_id, updated_at: now() })
+      .eq("athlete_id", id),
+  );
   await audit(actor, "athlete.update", { id, ...f });
   return getAthlete(id);
 }
@@ -431,7 +664,8 @@ export async function updateAthleteEvents(actor: Actor, id: number, eventIds: un
   for (const eventId of ids) {
     const event = eventById.get(eventId);
     if (!event) throw bad("One or more selected events no longer exist");
-    if (event.kind === "relay") throw bad("Relay teams are entered by house, not assigned to individual athletes");
+    if (event.kind === "relay")
+      throw bad("Relay teams are entered by house, not assigned to individual athletes");
     if (!currentByEvent.has(eventId) && !fits(event, athlete)) {
       throw bad(`${event.name} does not match this athlete’s age group and gender`);
     }
@@ -442,40 +676,68 @@ export async function updateAthleteEvents(actor: Actor, id: number, eventIds: un
   for (const entry of removed) {
     const event = eventById.get(entry.event_id);
     if (entry.perf_value !== null || entry.status !== "ok") {
-      throw new HttpError(409, `Clear ${event?.name || "the event"} result before removing this assignment`);
+      throw new HttpError(
+        409,
+        `Clear ${event?.name || "the event"} result before removing this assignment`,
+      );
     }
   }
   if (removed.length) {
-    await q(db().from("sd_entries").delete().in("id", removed.map((entry) => entry.id)));
+    await q(
+      db()
+        .from("sd_entries")
+        .delete()
+        .in(
+          "id",
+          removed.map((entry) => entry.id),
+        ),
+    );
   }
 
   const addedEvents = ids.filter((eventId) => !currentByEvent.has(eventId));
   if (addedEvents.length) {
     const updatedAt = now();
-    await q(db().from("sd_entries").insert(addedEvents.map((eventId) => ({
-      event_id: eventId,
-      athlete_id: id,
-      name: athlete.full_name,
-      house_id: athlete.house_id,
-      heat: 1,
-      status: "ok",
-      updated_by: actor?.id || null,
-      updated_at: updatedAt,
-    }))));
+    await q(
+      db()
+        .from("sd_entries")
+        .insert(
+          addedEvents.map((eventId) => ({
+            event_id: eventId,
+            athlete_id: id,
+            name: athlete.full_name,
+            house_id: athlete.house_id,
+            heat: 1,
+            status: "ok",
+            updated_by: actor?.id || null,
+            updated_at: updatedAt,
+          })),
+        ),
+    );
   }
-  await audit(actor, "athlete.events_update", { athlete_id: id, added: addedEvents.length, removed: removed.length });
+  await audit(actor, "athlete.events_update", {
+    athlete_id: id,
+    added: addedEvents.length,
+    removed: removed.length,
+  });
   return { added: addedEvents.length, removed: removed.length, athlete: await getAthlete(id) };
 }
 
 export async function setAthletePhoto(actor: Actor, id: number, image: Uint8Array) {
-  if (!image.length || image.length > 512 * 1024) throw bad("Upload a JPEG photo no larger than 512 KB");
+  if (!image.length || image.length > 512 * 1024)
+    throw bad("Upload a JPEG photo no larger than 512 KB");
   const cur = await getAthlete(id);
   if (!cur) throw new HttpError(404, "Athlete not found");
   const previousPath = cur.photo_path || null;
   const path = `${id}/${crypto.randomUUID()}.jpg`;
-  await q(db().storage.from(ATHLETE_PHOTO_BUCKET).upload(path, image, { contentType: "image/jpeg", upsert: false }));
+  await q(
+    db()
+      .storage.from(ATHLETE_PHOTO_BUCKET)
+      .upload(path, image, { contentType: "image/jpeg", upsert: false }),
+  );
   try {
-    await q(db().from("athletes").update({ photo_path: path, photo_consent: "granted" }).eq("id", id));
+    await q(
+      db().from("athletes").update({ photo_path: path, photo_consent: "granted" }).eq("id", id),
+    );
   } catch (error) {
     try {
       await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([path]));
@@ -494,8 +756,11 @@ export async function setAthletePhotoConsent(actor: Actor, id: number, status: u
   const cur = await getAthlete(id);
   if (!cur) throw new HttpError(404, "Athlete not found");
   const photoPath = consent === "granted" ? cur.photo_path : null;
-  await q(db().from("athletes").update({ photo_consent: consent, photo_path: photoPath }).eq("id", id));
-  if (cur.photo_path && !photoPath) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([cur.photo_path]));
+  await q(
+    db().from("athletes").update({ photo_consent: consent, photo_path: photoPath }).eq("id", id),
+  );
+  if (cur.photo_path && !photoPath)
+    await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([cur.photo_path]));
   await audit(actor, "athlete.photo_consent", { id, status: consent });
   return (await listAthletes()).find((athlete) => athlete.id === id) || null;
 }
@@ -527,31 +792,69 @@ type AdRow = {
 };
 
 function cleanAd(body: Body, current: AdRow | null) {
-  const phone = body.phone === undefined && current ? current.phone : str(body.phone, { field: "Phone", required: true, min: 7, max: 24 });
-  const whatsapp = body.whatsapp === undefined && current ? current.whatsapp : str(body.whatsapp, { field: "WhatsApp number", max: 24 });
-  const validPhone = (value: string) => /^\+?[\d ()-]+$/.test(value) && value.replace(/\D/g, "").length >= 7 && value.replace(/\D/g, "").length <= 15;
+  const phone =
+    body.phone === undefined && current
+      ? current.phone
+      : str(body.phone, { field: "Phone", required: true, min: 7, max: 24 });
+  const whatsapp =
+    body.whatsapp === undefined && current
+      ? current.whatsapp
+      : str(body.whatsapp, { field: "WhatsApp number", max: 24 });
+  const validPhone = (value: string) =>
+    /^\+?[\d ()-]+$/.test(value) &&
+    value.replace(/\D/g, "").length >= 7 &&
+    value.replace(/\D/g, "").length <= 15;
   if (!validPhone(phone)) throw bad("Phone must include 7 to 15 digits");
   if (whatsapp && !validPhone(whatsapp)) throw bad("WhatsApp number must include 7 to 15 digits");
-  const active = body.is_active === undefined && current ? current.is_active : body.is_active === true;
-  if (body.is_active !== undefined && typeof body.is_active !== "boolean") throw bad("Ad visibility must be true or false");
+  const active =
+    body.is_active === undefined && current ? current.is_active : body.is_active === true;
+  if (body.is_active !== undefined && typeof body.is_active !== "boolean")
+    throw bad("Ad visibility must be true or false");
   return {
-    club_name: body.club_name === undefined && current ? current.club_name : str(body.club_name, { field: "Club name", required: true, min: 2, max: 80 }),
-    title: body.title === undefined && current ? current.title : str(body.title, { field: "Title", required: true, min: 2, max: 120 }),
-    description: body.description === undefined && current ? current.description : str(body.description, { field: "Description", max: 600 }),
-    price: body.price === undefined && current ? current.price : str(body.price, { field: "Price", max: 80 }),
-    location: body.location === undefined && current ? current.location : str(body.location, { field: "Location", max: 160 }),
-    representative_name: body.representative_name === undefined && current
-      ? current.representative_name
-      : str(body.representative_name, { field: "Representative name", required: true, min: 2, max: 80 }),
+    club_name:
+      body.club_name === undefined && current
+        ? current.club_name
+        : str(body.club_name, { field: "Club name", required: true, min: 2, max: 80 }),
+    title:
+      body.title === undefined && current
+        ? current.title
+        : str(body.title, { field: "Title", required: true, min: 2, max: 120 }),
+    description:
+      body.description === undefined && current
+        ? current.description
+        : str(body.description, { field: "Description", max: 600 }),
+    price:
+      body.price === undefined && current
+        ? current.price
+        : str(body.price, { field: "Price", max: 80 }),
+    location:
+      body.location === undefined && current
+        ? current.location
+        : str(body.location, { field: "Location", max: 160 }),
+    representative_name:
+      body.representative_name === undefined && current
+        ? current.representative_name
+        : str(body.representative_name, {
+            field: "Representative name",
+            required: true,
+            min: 2,
+            max: 80,
+          }),
     phone,
     whatsapp,
-    selling_when: body.selling_when === undefined && current ? current.selling_when : str(body.selling_when, { field: "Selling date or time", max: 100 }),
+    selling_when:
+      body.selling_when === undefined && current
+        ? current.selling_when
+        : str(body.selling_when, { field: "Selling date or time", max: 100 }),
     is_active: active,
   };
 }
 
 async function adsWithUrls(rows: AdRow[]) {
-  const urls = await signedMediaUrls(ADS_IMAGE_BUCKET, rows.map((row) => row.image_path));
+  const urls = await signedMediaUrls(
+    ADS_IMAGE_BUCKET,
+    rows.map((row) => row.image_path),
+  );
   return rows.map(({ image_path, ...row }) => ({
     ...row,
     has_image: !!image_path,
@@ -573,21 +876,41 @@ export async function listAds(activeOnly = false) {
   return adsWithUrls(rows);
 }
 
-export async function saveAd(actor: Actor, id: number | null, body: Body, image: Uint8Array | null) {
-  const current = id === null ? null : await q<AdRow | null>(db().from("ads").select("*").eq("id", id).maybeSingle());
+export async function saveAd(
+  actor: Actor,
+  id: number | null,
+  body: Body,
+  image: Uint8Array | null,
+) {
+  const current =
+    id === null
+      ? null
+      : await q<AdRow | null>(db().from("ads").select("*").eq("id", id).maybeSingle());
   if (id !== null && !current) throw new HttpError(404, "Ad not found");
-  if (image && (!image.length || image.length > 512 * 1024)) throw bad("Upload a JPEG image no larger than 512 KB");
+  if (image && (!image.length || image.length > 512 * 1024))
+    throw bad("Upload a JPEG image no larger than 512 KB");
   const fields = cleanAd(body, current);
   const imagePath = image ? `ads/${crypto.randomUUID()}.jpg` : current?.image_path || null;
   if (image) {
-    await q(db().storage.from(ADS_IMAGE_BUCKET).upload(imagePath!, image, { contentType: "image/jpeg", upsert: false }));
+    await q(
+      db()
+        .storage.from(ADS_IMAGE_BUCKET)
+        .upload(imagePath!, image, { contentType: "image/jpeg", upsert: false }),
+    );
   }
   const values = { ...fields, image_path: imagePath, updated_at: now() };
   let saved: AdRow;
   try {
-    saved = id === null
-      ? await q<AdRow>(db().from("ads").insert({ ...values, created_at: values.updated_at }).select("*").single())
-      : await q<AdRow>(db().from("ads").update(values).eq("id", id).select("*").single());
+    saved =
+      id === null
+        ? await q<AdRow>(
+            db()
+              .from("ads")
+              .insert({ ...values, created_at: values.updated_at })
+              .select("*")
+              .single(),
+          )
+        : await q<AdRow>(db().from("ads").update(values).eq("id", id).select("*").single());
   } catch (error) {
     if (image && imagePath) {
       try {
@@ -598,8 +921,13 @@ export async function saveAd(actor: Actor, id: number | null, body: Body, image:
     }
     throw error;
   }
-  await audit(actor, id === null ? "ad.create" : "ad.update", { id: saved.id, club_name: saved.club_name, is_active: saved.is_active });
-  if (image && current?.image_path) await q(db().storage.from(ADS_IMAGE_BUCKET).remove([current.image_path]));
+  await audit(actor, id === null ? "ad.create" : "ad.update", {
+    id: saved.id,
+    club_name: saved.club_name,
+    is_active: saved.is_active,
+  });
+  if (image && current?.image_path)
+    await q(db().storage.from(ADS_IMAGE_BUCKET).remove([current.image_path]));
   return (await adsWithUrls([saved]))[0];
 }
 
@@ -616,9 +944,17 @@ export async function deleteAthlete(actor: Actor, id: number) {
   const cur = await getAthlete(id);
   if (!cur) throw new HttpError(404, "Athlete not found");
   const n = await countOf(
-    db().from("sd_entries").select("id", { count: "exact", head: true }).eq("athlete_id", id).or("perf_value.not.is.null,status.neq.ok"),
+    db()
+      .from("sd_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("athlete_id", id)
+      .or("perf_value.not.is.null,status.neq.ok"),
   );
-  if (n > 0) throw new HttpError(409, `${cur.full_name} already has ${n} result${n === 1 ? "" : "s"}. Clear those first`);
+  if (n > 0)
+    throw new HttpError(
+      409,
+      `${cur.full_name} already has ${n} result${n === 1 ? "" : "s"}. Clear those first`,
+    );
   await q(db().from("sd_entries").delete().eq("athlete_id", id));
   await q(db().from("athletes").delete().eq("id", id));
   if (cur.photo_path) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove([cur.photo_path]));
@@ -628,15 +964,27 @@ export async function deleteAthlete(actor: Actor, id: number) {
 
 export async function clearRoster(actor: Actor) {
   const [results, relayResults, athletes, entries, photos] = await Promise.all([
-    countOf(db().from("sd_entries").select("id", { count: "exact", head: true }).or("perf_value.not.is.null,status.neq.ok")),
+    countOf(
+      db()
+        .from("sd_entries")
+        .select("id", { count: "exact", head: true })
+        .or("perf_value.not.is.null,status.neq.ok"),
+    ),
     countOf(db().from("relay_splits").select("entry_id", { count: "exact", head: true })),
     countOf(db().from("athletes").select("id", { count: "exact", head: true })),
     countOf(db().from("sd_entries").select("id", { count: "exact", head: true })),
-    q<{ photo_path: string }[]>(db().from("athletes").select("photo_path").not("photo_path", "is", null)),
+    q<{ photo_path: string }[]>(
+      db().from("athletes").select("photo_path").not("photo_path", "is", null),
+    ),
   ]);
-  if (results || relayResults) throw new HttpError(409, "Clear all event results before clearing the roster");
+  if (results || relayResults)
+    throw new HttpError(409, "Clear all event results before clearing the roster");
   const backup = `before-roster-clear-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-  await q(db().from("backups").insert({ created_at: now(), label: backup, data: await backupData() }));
+  await q(
+    db()
+      .from("backups")
+      .insert({ created_at: now(), label: backup, data: await backupData() }),
+  );
   await q(db().from("sd_entries").delete().gt("id", 0));
   await q(db().from("athletes").delete().gt("id", 0));
   const photoPaths = photos.map((photo) => photo.photo_path);
@@ -646,7 +994,9 @@ export async function clearRoster(actor: Actor) {
 }
 
 const LV = (v: unknown) => {
-  const s = String(v || "").trim().toLowerCase();
+  const s = String(v || "")
+    .trim()
+    .toLowerCase();
   const compact = s.replace(/[\s_-]+/g, "");
   const aliases: Record<string, (typeof ATHLETE_LEVELS)[number]> = {
     lowerjunior: "Lower Junior",
@@ -665,10 +1015,15 @@ const LV = (v: unknown) => {
   };
   return !s
     ? null
-    : aliases[compact] || ATHLETE_LEVELS.find((l) => l.toLowerCase() === s || (s.length === 1 && l.charAt(0).toLowerCase() === s));
+    : aliases[compact] ||
+        ATHLETE_LEVELS.find(
+          (l) => l.toLowerCase() === s || (s.length === 1 && l.charAt(0).toLowerCase() === s),
+        );
 };
 const GN = (v: unknown) => {
-  const s = String(v || "").trim().toLowerCase();
+  const s = String(v || "")
+    .trim()
+    .toLowerCase();
   if (!s) return null;
   if (["f", "g", "girl", "girls", "female", "w"].includes(s)) return "F";
   if (["m", "b", "boy", "boys", "male"].includes(s)) return "M";
@@ -677,7 +1032,8 @@ const GN = (v: unknown) => {
 
 /** rows: [{full_name, house, level, gender, bib}]. House is its name (or first letter). Skips duplicates, reports bad rows. */
 export async function importAthletes(actor: Actor, rows: unknown) {
-  if (!Array.isArray(rows) || !rows.length || rows.length > 2000) throw bad("Send between 1 and 2000 rows");
+  if (!Array.isArray(rows) || !rows.length || rows.length > 2000)
+    throw bad("Send between 1 and 2000 rows");
   const houses = await listHouses();
   const existing = await q<AthleteRow[]>(db().from("athletes").select("bib,full_name,house_id"));
   const names = new Set(existing.map((a) => `${a.full_name.toLowerCase()}|${a.house_id}`));
@@ -689,10 +1045,16 @@ export async function importAthletes(actor: Actor, rows: unknown) {
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i] || {};
     try {
-      const hv = String(r.house || "").trim().toLowerCase();
-      const house = houses.find((h) => h.name.toLowerCase() === hv) || (hv.length === 1 ? houses.find((h) => h.name.charAt(0).toLowerCase() === hv) : null);
+      const hv = String(r.house || "")
+        .trim()
+        .toLowerCase();
+      const house =
+        houses.find((h) => h.name.toLowerCase() === hv) ||
+        (hv.length === 1 ? houses.find((h) => h.name.charAt(0).toLowerCase() === hv) : null);
       if (!house) throw bad(`unknown house "${r.house}"`);
-      const requestedLevels = Array.isArray(r.levels) ? r.levels : String(r.levels ?? r.level ?? "").split(/[;,|]/);
+      const requestedLevels = Array.isArray(r.levels)
+        ? r.levels
+        : String(r.levels ?? r.level ?? "").split(/[;,|]/);
       const levels: string[] = [];
       for (const value of requestedLevels) {
         const label = String(value ?? "").trim();
@@ -710,23 +1072,50 @@ export async function importAthletes(actor: Actor, rows: unknown) {
         skipped++;
         continue;
       }
-      if (!bib) bib = bibFrom((house.name.trim()[0] || "X").toUpperCase(), bibs.filter((b) => b.startsWith((house.name.trim()[0] || "X").toUpperCase())));
+      if (!bib)
+        bib = bibFrom(
+          (house.name.trim()[0] || "X").toUpperCase(),
+          bibs.filter((b) => b.startsWith((house.name.trim()[0] || "X").toUpperCase())),
+        );
       else if (bibSet.has(bib)) throw bad(`bib ${bib} is already used`);
       names.add(nk);
       bibs.push(bib);
       bibSet.add(bib);
-      toInsert.push({ full_name, house_id: house.id, level: levels[0] || null, levels, gender, bib, created_at: now() });
+      toInsert.push({
+        full_name,
+        house_id: house.id,
+        level: levels[0] || null,
+        levels,
+        gender,
+        bib,
+        created_at: now(),
+      });
     } catch (e) {
       errors.push(`Row ${i + 1}: ${(e as Error).message}`);
     }
   }
-  for (let i = 0; i < toInsert.length; i += 500) await q(db().from("athletes").insert(toInsert.slice(i, i + 500)));
-  await audit(actor, "athlete.import", { created: toInsert.length, skipped, errors: errors.length });
-  return { created: toInsert.length, skipped, errors: errors.slice(0, 50), errorCount: errors.length };
+  for (let i = 0; i < toInsert.length; i += 500)
+    await q(
+      db()
+        .from("athletes")
+        .insert(toInsert.slice(i, i + 500)),
+    );
+  await audit(actor, "athlete.import", {
+    created: toInsert.length,
+    skipped,
+    errors: errors.length,
+  });
+  return {
+    created: toInsert.length,
+    skipped,
+    errors: errors.slice(0, 50),
+    errorCount: errors.length,
+  };
 }
 
 // ---- entries (who runs in which event) -----------------------------------------------------------
-const getEntry = (id: number) => q<EntryRow | null>(db().from("sd_entries").select("*").eq("id", id).maybeSingle());
+const getEntry = (id: number) =>
+  q<EntryRow | null>(db().from("sd_entries").select("*").eq("id", id).maybeSingle());
 async function mustEntry(id: number) {
   const e = await getEntry(id);
   if (!e) throw new HttpError(404, "That entry no longer exists");
@@ -753,11 +1142,15 @@ async function selectAll<T>(
 }
 
 const fits = (ev: EventRow, a: AthleteRow) =>
-  (ev.level === "Mixed" || (a.levels || (a.level ? [a.level] : [])).includes(ev.level)) && (!ev.gender || a.gender === ev.gender);
+  (ev.level === "Mixed" || (a.levels || (a.level ? [a.level] : [])).includes(ev.level)) &&
+  (!ev.gender || a.gender === ev.gender);
 
 /** Add athletes to several new events at once (everyone who fits). Relays get one entry per house. */
 async function fillMany(events: EventRow[], actor: Actor) {
-  const [athletes, houses] = await Promise.all([selectAll<AthleteRow>("athletes", "*"), listHouses()]);
+  const [athletes, houses] = await Promise.all([
+    selectAll<AthleteRow>("athletes", "*"),
+    listHouses(),
+  ]);
   athletes.sort((a, b) => a.bib.localeCompare(b.bib, undefined, { numeric: true }));
   const rows: Record<string, unknown>[] = [];
   const t = now();
@@ -765,10 +1158,21 @@ async function fillMany(events: EventRow[], actor: Actor) {
     if (ev.kind === "relay") for (const h of houses) rows.push(entryRow(ev, null, h, actor, t));
     else for (const a of athletes) if (fits(ev, a)) rows.push(entryRow(ev, a, null, actor, t));
   }
-  for (let i = 0; i < rows.length; i += 500) await q(db().from("sd_entries").insert(rows.slice(i, i + 500)));
+  for (let i = 0; i < rows.length; i += 500)
+    await q(
+      db()
+        .from("sd_entries")
+        .insert(rows.slice(i, i + 500)),
+    );
   return rows.length;
 }
-const entryRow = (ev: EventRow, a: AthleteRow | null, h: HouseRow | null, actor: Actor, t: number) => ({
+const entryRow = (
+  ev: EventRow,
+  a: AthleteRow | null,
+  h: HouseRow | null,
+  actor: Actor,
+  t: number,
+) => ({
   event_id: ev.id,
   athlete_id: a ? a.id : null,
   name: a ? a.full_name : `${h!.name} team`,
@@ -781,38 +1185,67 @@ const entryRow = (ev: EventRow, a: AthleteRow | null, h: HouseRow | null, actor:
 
 /** Add athletes to an event (ids = list, or null for "everyone who fits"). Relays get one entry per house. */
 async function fillEntries(ev: EventRow, ids: number[] | null, actor: Actor) {
-  const existing = await q<{ athlete_id: number | null; house_id: number }[]>(db().from("sd_entries").select("athlete_id,house_id").eq("event_id", ev.id));
+  const existing = await q<{ athlete_id: number | null; house_id: number }[]>(
+    db().from("sd_entries").select("athlete_id,house_id").eq("event_id", ev.id),
+  );
   const t = now();
   const rows: Record<string, unknown>[] = [];
   if (ev.kind === "relay") {
-    for (const h of await listHouses()) if (!existing.some((e) => e.athlete_id === null && e.house_id === h.id)) rows.push(entryRow(ev, null, h, actor, t));
-    for (let i = 0; i < rows.length; i += 500) await q(db().from("sd_entries").insert(rows.slice(i, i + 500)));
+    for (const h of await listHouses())
+      if (!existing.some((e) => e.athlete_id === null && e.house_id === h.id))
+        rows.push(entryRow(ev, null, h, actor, t));
+    for (let i = 0; i < rows.length; i += 500)
+      await q(
+        db()
+          .from("sd_entries")
+          .insert(rows.slice(i, i + 500)),
+      );
     return rows.length;
   } else {
     const have = new Set(existing.map((e) => e.athlete_id));
     let list: AthleteRow[];
     if (ids) {
       list = [];
-      for (let i = 0; i < ids.length; i += 300) list.push(...(await q<AthleteRow[]>(db().from("athletes").select("*").in("id", ids.slice(i, i + 300)))));
+      for (let i = 0; i < ids.length; i += 300)
+        list.push(
+          ...(await q<AthleteRow[]>(
+            db()
+              .from("athletes")
+              .select("*")
+              .in("id", ids.slice(i, i + 300)),
+          )),
+        );
     } else list = (await selectAll<AthleteRow>("athletes", "*")).filter((a) => fits(ev, a));
     list.sort((a, b) => a.bib.localeCompare(b.bib, undefined, { numeric: true }));
-    for (const a of list) if (!have.has(a.id)) {
-      have.add(a.id);
-      rows.push(entryRow(ev, a, null, actor, t));
-    }
+    for (const a of list)
+      if (!have.has(a.id)) {
+        have.add(a.id);
+        rows.push(entryRow(ev, a, null, actor, t));
+      }
   }
-  for (let i = 0; i < rows.length; i += 500) await q(db().from("sd_entries").insert(rows.slice(i, i + 500)));
+  for (let i = 0; i < rows.length; i += 500)
+    await q(
+      db()
+        .from("sd_entries")
+        .insert(rows.slice(i, i + 500)),
+    );
   return rows.length;
 }
 
 export async function addEntries(actor: Actor, eventId: number, b: Body) {
-  const ids = b.all ? null : Array.isArray(b.athlete_ids) ? b.athlete_ids.map((x: unknown) => int(x, { field: "Athlete" })) : [];
+  const ids = b.all
+    ? null
+    : Array.isArray(b.athlete_ids)
+      ? b.athlete_ids.map((x: unknown) => int(x, { field: "Athlete" }))
+      : [];
   if (ids && (!ids.length || ids.length > 2000)) throw bad("Choose between 1 and 2000 athletes");
   const ev = await mustEvent(eventId);
   assertEditable(actor, ev);
   const added = await fillEntries(ev, ids, actor);
   await audit(actor, "entries.add", { event: ev.name, level: ev.level, added });
-  const total = await countOf(db().from("sd_entries").select("id", { count: "exact", head: true }).eq("event_id", eventId));
+  const total = await countOf(
+    db().from("sd_entries").select("id", { count: "exact", head: true }).eq("event_id", eventId),
+  );
   return { added, total };
 }
 
@@ -842,7 +1275,12 @@ export async function makeHeats(actor: Actor, eventId: number, size: unknown) {
   const list = await q<{ id: number; house_id: number; athletes: { bib: string } | null }[]>(
     db().from("sd_entries").select("id,house_id,athletes(bib)").eq("event_id", eventId),
   );
-  list.sort((a, b) => a.house_id - b.house_id || (a.athletes?.bib || "").localeCompare(b.athletes?.bib || "") || a.id - b.id);
+  list.sort(
+    (a, b) =>
+      a.house_id - b.house_id ||
+      (a.athletes?.bib || "").localeCompare(b.athletes?.bib || "") ||
+      a.id - b.id,
+  );
   const heats = Math.max(1, Math.ceil(list.length / n));
   const byHeat = new Map<number, number[]>();
   list.forEach((e, i) => {
@@ -856,10 +1294,27 @@ export async function makeHeats(actor: Actor, eventId: number, size: unknown) {
 }
 
 // ---- recording (what a recorder does on the day) -------------------------------------------------
-async function touch(actor: Actor, ev: EventRow, id: number, fields: { performance?: string; perf_value?: number | null; status?: string }) {
+async function touch(
+  actor: Actor,
+  ev: EventRow,
+  id: number,
+  fields: { performance?: string; perf_value?: number | null; status?: string },
+) {
   const f = { performance: "", perf_value: null as number | null, status: "ok", ...fields };
-  await q(db().from("sd_entries").update({ ...f, updated_by: actor!.id, updated_at: now() }).eq("id", id));
-  if (ev.status === "scheduled") await q(db().from("sd_events").update({ status: "live", updated_at: now() }).eq("id", ev.id).eq("status", "scheduled"));
+  await q(
+    db()
+      .from("sd_entries")
+      .update({ ...f, updated_by: actor!.id, updated_at: now() })
+      .eq("id", id),
+  );
+  if (ev.status === "scheduled")
+    await q(
+      db()
+        .from("sd_events")
+        .update({ status: "live", updated_at: now() })
+        .eq("id", ev.id)
+        .eq("status", "scheduled"),
+    );
 }
 async function entryAndEvent(actor: Actor, id: number) {
   const cur = await mustEntry(id);
@@ -881,11 +1336,14 @@ const ORDER_ID_SCALE = 2_147_483_648;
 export async function recordFinish(actor: Actor, id: number) {
   const { cur, ev } = await entryAndEvent(actor, id);
   if (ev.measure !== "time") throw bad("Finish order is only used for timed track events");
-  if (cur.status !== "ok" || cur.perf_value !== null) throw bad("Clear this result before recording a new finish");
+  if (cur.status !== "ok" || cur.perf_value !== null)
+    throw bad("Clear this result before recording a new finish");
   const recordedInHeat = await q<{ perf_value: number | null; status: string }[]>(
     db().from("sd_entries").select("perf_value,status").eq("event_id", ev.id).eq("heat", cur.heat),
   );
-  const count = recordedInHeat.filter((entry) => entry.status === "ok" && entry.perf_value !== null).length;
+  const count = recordedInHeat.filter(
+    (entry) => entry.status === "ok" && entry.perf_value !== null,
+  ).length;
   if (count + 1 >= HEAT_ORDER_STRIDE) throw bad("This heat has too many recorded finishers");
   const order = cur.heat * HEAT_ORDER_STRIDE + count + 1 + cur.id / ORDER_ID_SCALE;
   await q(db().from("relay_splits").delete().eq("entry_id", id));
@@ -908,7 +1366,11 @@ export async function undoRelaySplit(actor: Actor, id: number) {
   const result = await q<{ leg: number }>(
     db().rpc("sd_undo_relay_split", { _entry: id, _actor: actor!.id, _now: now() }),
   );
-  await audit(actor, "relay.split.undo", { event: ev.name, house_id: cur.house_id, leg: result.leg });
+  await audit(actor, "relay.split.undo", {
+    event: ev.name,
+    house_id: cur.house_id,
+    leg: result.leg,
+  });
   return { ...result, entry: await getEntry(id) };
 }
 
@@ -933,7 +1395,12 @@ export async function clearResult(actor: Actor, id: number) {
 export async function setEntryStatus(actor: Actor, id: number, status: unknown) {
   const st = oneOf(status, S.STATUSES, "Status");
   const { cur, ev } = await entryAndEvent(actor, id);
-  await touch(actor, ev, id, st === "ok" ? { performance: cur.performance, perf_value: cur.perf_value } : { status: st });
+  await touch(
+    actor,
+    ev,
+    id,
+    st === "ok" ? { performance: cur.performance, perf_value: cur.perf_value } : { status: st },
+  );
   await audit(actor, "entry.status", { event: ev.name, name: cur.name, status: st });
   return getEntry(id);
 }
@@ -956,8 +1423,13 @@ export async function startHeat(actor: Actor, eventId: number, heat: unknown, at
   const ev = await mustEvent(eventId);
   assertEditable(actor, ev);
   const n = now();
-  const t = Number.isFinite(Number(at)) && Number(at) <= n + 500 && Number(at) >= n - 5000 ? Math.round(Number(at)) : n;
-  const r = await q<{ started_at: number; already: boolean }>(db().rpc("sd_start_heat", { _event: eventId, _heat: h, _at: t, _now: n }));
+  const t =
+    Number.isFinite(Number(at)) && Number(at) <= n + 500 && Number(at) >= n - 5000
+      ? Math.round(Number(at))
+      : n;
+  const r = await q<{ started_at: number; already: boolean }>(
+    db().rpc("sd_start_heat", { _event: eventId, _heat: h, _at: t, _now: n }),
+  );
   if (!r.already) await audit(actor, "heat.start", { event: ev.name, heat: h });
   return { started_at: Number(r.started_at), now: now(), already: !!r.already };
 }
@@ -968,7 +1440,13 @@ export async function resetHeat(actor: Actor, eventId: number, heat: unknown, fo
   const ev = await mustEvent(eventId);
   assertEditable(actor, ev);
   const result = await q<{ cleared: number }>(
-    db().rpc("sd_reset_heat", { _event: eventId, _heat: h, _force: force, _actor: actor!.id, _now: now() }),
+    db().rpc("sd_reset_heat", {
+      _event: eventId,
+      _heat: h,
+      _force: force,
+      _actor: actor!.id,
+      _now: now(),
+    }),
   );
   await audit(actor, "heat.reset", { event: ev.name, heat: h, cleared: result.cleared });
   return result;
@@ -992,7 +1470,9 @@ export async function completeEvent(actor: Actor, eventId: number, rest: unknown
     );
     marked = rows.length;
   }
-  await q(db().from("sd_events").update({ status: "completed", updated_at: now() }).eq("id", eventId));
+  await q(
+    db().from("sd_events").update({ status: "completed", updated_at: now() }).eq("id", eventId),
+  );
   await audit(actor, "event.complete", { event: ev.name, markedDns: marked });
   return { event: await getEvent(eventId), markedDns: marked };
 }
@@ -1007,15 +1487,16 @@ export async function reopenEvent(actor: Actor, eventId: number) {
 
 // ---- reset, backup, export -----------------------------------------------------------------------
 export async function backupData() {
-  const [settings, houses, athletes, events, entries, relayMembers, relaySplits] = await Promise.all([
-    getSettings(),
-    listHouses(),
-    selectAll("athletes", "*"),
-    selectAll("sd_events", "*"),
-    selectAll("sd_entries", "*"),
-    selectAll("relay_members", "*", undefined, ["entry_id", "leg"]),
-    selectAll("relay_splits", "*", undefined, ["entry_id", "leg"]),
-  ]);
+  const [settings, houses, athletes, events, entries, relayMembers, relaySplits] =
+    await Promise.all([
+      getSettings(),
+      listHouses(),
+      selectAll("athletes", "*"),
+      selectAll("sd_events", "*"),
+      selectAll("sd_entries", "*"),
+      selectAll("relay_members", "*", undefined, ["entry_id", "leg"]),
+      selectAll("relay_splits", "*", undefined, ["entry_id", "leg"]),
+    ]);
   return {
     app: "machabeng-sports-day",
     version: 2,
@@ -1034,13 +1515,22 @@ export async function backupData() {
 export async function reset(actor: Actor, scope: unknown) {
   const sc = oneOf(scope, ["results", "all"] as const, "Scope");
   const [results, relayResults] = await Promise.all([
-    countOf(db().from("sd_entries").select("id", { count: "exact", head: true }).or("perf_value.not.is.null,status.neq.ok")),
+    countOf(
+      db()
+        .from("sd_entries")
+        .select("id", { count: "exact", head: true })
+        .or("perf_value.not.is.null,status.neq.ok"),
+    ),
     countOf(db().from("relay_splits").select("entry_id", { count: "exact", head: true })),
   ]);
   const n = results + relayResults;
   // Always keep a safety copy first.
   const label = `before-reset-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-  await q(db().from("backups").insert({ created_at: now(), label, data: await backupData() }));
+  await q(
+    db()
+      .from("backups")
+      .insert({ created_at: now(), label, data: await backupData() }),
+  );
   if (sc === "all") {
     const photos = await q<{ photo_path: string }[]>(
       db().from("athletes").select("photo_path").not("photo_path", "is", null),
@@ -1052,8 +1542,18 @@ export async function reset(actor: Actor, scope: unknown) {
     if (photoPaths.length) await q(db().storage.from(ATHLETE_PHOTO_BUCKET).remove(photoPaths));
   } else {
     await q(db().from("relay_splits").delete().gt("entry_id", 0));
-    await q(db().from("sd_entries").update({ performance: "", perf_value: null, status: "ok", updated_at: now() }).gt("id", 0));
-    await q(db().from("sd_events").update({ status: "scheduled", heat_starts: {}, heat_ends: {}, updated_at: now() }).gt("id", 0));
+    await q(
+      db()
+        .from("sd_entries")
+        .update({ performance: "", perf_value: null, status: "ok", updated_at: now() })
+        .gt("id", 0),
+    );
+    await q(
+      db()
+        .from("sd_events")
+        .update({ status: "scheduled", heat_starts: {}, heat_ends: {}, updated_at: now() })
+        .gt("id", 0),
+    );
   }
   const s = await getSettings();
   s.finalised = false;
@@ -1064,13 +1564,29 @@ export async function reset(actor: Actor, scope: unknown) {
 }
 
 export const listAudit = (limit: unknown = 100) =>
-  q(db().from("audit").select("id,ts,username,action,detail").order("id", { ascending: false }).limit(Math.min(Math.max(Number(limit) || 100, 1), 1000)));
+  q(
+    db()
+      .from("audit")
+      .select("id,ts,username,action,detail")
+      .order("id", { ascending: false })
+      .limit(Math.min(Math.max(Number(limit) || 100, 1), 1000)),
+  );
 
 export async function athletesCsv() {
   const hs = new Map((await listHouses()).map((h) => [h.id, h.name]));
   return (
     [csvRow(["Name", "House", "Age group", "Gender", "Bib"])]
-      .concat((await listAthletes()).map((a) => csvRow([a.full_name, hs.get(a.house_id), (a.levels || []).join("; "), a.gender || "", a.bib])))
+      .concat(
+        (await listAthletes()).map((a) =>
+          csvRow([
+            a.full_name,
+            hs.get(a.house_id),
+            (a.levels || []).join("; "),
+            a.gender || "",
+            a.bib,
+          ]),
+        ),
+      )
       .join("\r\n") + "\r\n"
   );
 }
@@ -1083,18 +1599,26 @@ async function loadRaw() {
     selectAll<EventRow>("sd_events", "*"),
     selectAll<EntryRow>("sd_entries", "*"),
     selectAll<AthleteRow>("athletes", "*"),
-    q<{ staff_no: number; display_name: string | null }[]>(db().from("profiles").select("staff_no,display_name")),
+    q<{ staff_no: number; display_name: string | null }[]>(
+      db().from("profiles").select("staff_no,display_name"),
+    ),
   ]);
   const names = new Map(staff.map((s) => [s.staff_no, s.display_name]));
   const photoUrls = await signedMediaUrls(
     ATHLETE_PHOTO_BUCKET,
-    athletes.filter((athlete) => athlete.photo_consent === "granted").map((athlete) => athlete.photo_path),
+    athletes
+      .filter((athlete) => athlete.photo_consent === "granted")
+      .map((athlete) => athlete.photo_path),
   );
   const publicAthletes = athletes.map((athlete) => ({
     ...athlete,
-    photo_url: athlete.photo_consent === "granted" && athlete.photo_path ? photoUrls.get(athlete.photo_path) || null : null,
+    photo_url:
+      athlete.photo_consent === "granted" && athlete.photo_path
+        ? photoUrls.get(athlete.photo_path) || null
+        : null,
   }));
-  for (const e of entries) e.by_name = e.updated_by === null ? null : names.get(e.updated_by) || null;
+  for (const e of entries)
+    e.by_name = e.updated_by === null ? null : names.get(e.updated_by) || null;
   return { settings, houses, events, entries, athletes: publicAthletes };
 }
 

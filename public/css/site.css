@@ -288,3 +288,31 @@ h1,h2,h3,nav b,.card .nm,.standing-head .name,.sub,.win b{font-family:"Big Shoul
 .marketplace-state span{font-size:15px}
 @media(max-width:960px){.marketplace-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.marketplace-main{padding:94px 5vw 48px}.marketplace-grid{grid-template-columns:1fr}.marketplace-section{padding:16px}.marketplace-filters{grid-template-columns:1fr}.marketplace-photo-wrap{height:230px}.marketplace-heading h1{white-space:normal}}
+
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.machcoll-open{position:fixed;right:max(22px,env(safe-area-inset-right));bottom:max(22px,env(safe-area-inset-bottom));z-index:40;display:flex;align-items:center;gap:10px;padding:10px 18px 10px 10px;border:1px solid rgba(255,255,255,.28);border-radius:999px;background:#102e53;color:#fff;font:700 15px Figtree,system-ui,sans-serif;box-shadow:0 12px 32px rgba(2,6,23,.3);cursor:pointer;transition:transform .18s,background .18s}
+.machcoll-open:hover{transform:translateY(-2px);background:#174271}
+.machcoll-open-icon,.machcoll-avatar{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:50%;background:#34d399;color:#052e26;font:900 20px/1 "Big Shoulders Display",Impact,sans-serif}
+.machcoll-dialog{position:fixed;inset:auto max(22px,env(safe-area-inset-right)) max(86px,calc(env(safe-area-inset-bottom) + 72px)) auto;width:min(410px,calc(100vw - 32px));max-width:none;max-height:min(640px,calc(100dvh - 120px));padding:0;overflow:hidden;border:1px solid rgba(255,255,255,.35);border-radius:22px;background:#f8fafc;color:#0f172a;box-shadow:0 24px 70px rgba(2,6,23,.35)}
+.machcoll-dialog::backdrop{background:rgba(2,6,23,.34);backdrop-filter:blur(3px)}
+.machcoll-header{display:flex;align-items:center;gap:12px;padding:16px 18px;background:#102e53;color:#fff}
+.machcoll-header h2{margin:0;font:900 25px/1 "Big Shoulders Display",Impact,sans-serif;letter-spacing:.03em;text-transform:uppercase}
+.machcoll-header p{margin:4px 0 0;color:#dbeafe;font-size:12px}
+.machcoll-close{width:36px;height:36px;margin-left:auto;border:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-size:24px;line-height:1;cursor:pointer}
+.machcoll-close:hover{background:rgba(255,255,255,.23)}
+.machcoll-messages{display:flex;flex-direction:column;gap:12px;max-height:min(430px,calc(100dvh - 300px));min-height:180px;padding:18px;overflow:auto;overscroll-behavior:contain}
+.machcoll-bubble{max-width:90%;margin:0;padding:11px 14px;border-radius:16px;background:#e2e8f0;color:#0f172a;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.machcoll-bubble.user{align-self:flex-end;background:#d1fae5;color:#064e3b}
+.machcoll-bubble.error{background:#fee2e2;color:#991b1b}
+.machcoll-suggestions{display:flex;flex-wrap:wrap;gap:7px}
+.machcoll-suggestions button{padding:7px 10px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;color:#334155;font:500 12px Figtree,system-ui,sans-serif;cursor:pointer}
+.machcoll-suggestions button:hover{border-color:#10b981;color:#047857}
+.machcoll-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;padding:12px 14px;border-top:1px solid #e2e8f0;background:#fff}
+.machcoll-form textarea{min-width:0;min-height:48px;max-height:120px;padding:11px 12px;border:1px solid #cbd5e1;border-radius:13px;background:#f8fafc;color:#0f172a;font:500 14px/1.4 Figtree,system-ui,sans-serif;resize:vertical}
+.machcoll-form textarea:focus{border-color:#10b981;outline:3px solid rgba(16,185,129,.16)}
+.machcoll-form>button{align-self:end;min-height:42px;padding:0 16px;border:0;border-radius:12px;background:#10b981;color:#052e26;font:700 13px Figtree,system-ui,sans-serif;cursor:pointer}
+.machcoll-form>button:hover{background:#34d399}
+.machcoll-form>button:disabled{opacity:.55;cursor:wait}
+.machcoll-status{margin:0;padding:0 16px 12px;background:#fff;color:#64748b;font-size:11px;line-height:1.4}
+@media(max-width:520px){.machcoll-dialog{inset:auto 10px calc(78px + env(safe-area-inset-bottom)) 10px;width:auto;max-height:calc(100dvh - 112px);border-radius:18px}.machcoll-messages{max-height:calc(100dvh - 285px);min-height:150px}.machcoll-open{right:14px;bottom:calc(14px + env(safe-area-inset-bottom))}}
+@media(prefers-reduced-motion:reduce){.machcoll-open{transition:none}}

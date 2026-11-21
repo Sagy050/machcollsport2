@@ -15,6 +15,7 @@ h1,h2,h3{font-family:"Big Shoulders Display",Impact,sans-serif;font-weight:900;l
 .page{max-width:900px;margin:0 auto;padding:20px 20px 60px;background:#fff;min-height:100vh}
 .bar{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:12px}
 .btn{display:inline-flex;align-items:center;min-height:42px;padding:6px 16px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;font:600 14px "Figtree",system-ui,sans-serif;cursor:pointer;text-decoration:none;color:#334155;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.btn[aria-disabled="true"]{opacity:.65;pointer-events:none}
 .btn.p{background:#2563eb;border-color:#2563eb;color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.18)}
 header.rep{display:flex;gap:16px;align-items:center;border-bottom:3px solid var(--brand);padding-bottom:14px;margin-bottom:16px}
 header.rep img{width:80px;height:80px;border-radius:50%}header.rep h1{font-size:clamp(32px,5vw,48px)}header.rep p{margin:4px 0 0;color:var(--mute)}
@@ -27,6 +28,15 @@ table{width:100%;border-collapse:collapse;margin-bottom:6px;background:#fff;bord
 .athlete-photo{width:104px;height:104px;object-fit:cover;border-radius:18px;vertical-align:middle;margin-right:12px;background:#e2e8f0}
 .big td{font-size:15px}.empty{color:var(--mute)}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}@media(max-width:700px){.cols{grid-template-columns:1fr}header.rep h1{font-size:34px}}
+.chart-panel{margin:12px 0 16px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#fff,#f8fafc)}
+.chart-panel h3{margin:0 0 10px;font-size:19px}
+.points-chart-svg{display:block;width:100%;height:auto;overflow:visible}
+.chart-house{font:600 16px "Figtree",system-ui,sans-serif;fill:var(--ink)}
+.chart-value{font:900 19px "Big Shoulders Display",Impact,sans-serif;fill:var(--ink)}
+.chart-note{margin:10px 0 0;color:var(--mute);font-size:13px;font-weight:600}
+.event-chart{margin:6px 0 8px;padding:8px 10px;border-radius:10px;background:#f8fafc}
+.chart-label{display:block;margin-bottom:4px;color:#64748b;font-size:9px;font-weight:700;letter-spacing:.1em}
+.ev{padding:10px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;margin:0 0 16px;box-shadow:0 4px 14px rgba(15,23,42,.04)}
 footer{margin-top:30px;color:var(--mute);font-size:13px;border-top:1px solid var(--line);padding-top:10px}
 tbody tr:nth-child(even){background:#fcfdff}tbody tr:hover{background:#f1f5f9}
 @media print{body{background:#fff}.bar{display:none}.page{padding:0;max-width:none}h2{break-after:avoid}}
@@ -34,10 +44,11 @@ tbody tr:nth-child(even){background:#fcfdff}tbody tr:hover{background:#f1f5f9}
 </head>
 <body>
 <div class="page">
-  <div class="bar"><a class="btn" href="/">← Live site</a><a class="btn" href="/api/results.csv">Download CSV</a><button class="btn p" id="print" type="button">Print / save as PDF</button></div>
+  <div class="bar"><a class="btn" href="/">← Live site</a><a class="btn" href="/api/results.csv">Download CSV</a><button class="btn" id="print" type="button">Print</button><a class="btn p" id="pdf" href="#" aria-disabled="true" tabindex="-1">Download PDF</a></div>
   <div id="doc"><p class="empty">Loading results…</p></div>
 </div>
 <script src="/js/house-colors.js"></script>
+<script src="/js/report-pdf.js"></script>
 <script src="/js/report.js"></script>
 </body>
 </html>

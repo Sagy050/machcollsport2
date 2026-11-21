@@ -15,18 +15,20 @@ The separate `sportsday-v2` app uses Express and SQLite. Its database and deploy
 - **Athlete photos:** admins can record consent and upload a compressed JPEG only when permission is granted. Photos are kept in private storage and signed into public results only for consenting athletes.
 - **Marketplace ads:** `/ads` lists active club ads; only admins can create, edit, publish, hide, or delete ads through the staff setup area.
 - **Live recording:** recorder actions require a staff session. Staff state and public results are read through the server API; database changes update `live_version`, which the browser listens to through Supabase Realtime.
+- **Machcoll:** the public landing page sends questions to `POST /api/chat`. The server reads current standings, schedule, scoring, and house-level event results; student names are used only for server-side redaction and are not included in the model prompt. Track performances, private records, and write operations are not available to the assistant. Each browser/device can submit one question per UTC calendar day, with a browser-derived persistent device ID plus server-side enforcement; chat is not an official complaint submission channel.
 
 The database schema and incremental changes live in `drizzle/migrations/`. Migration `0003_relay_and_admin_setup.sql` adds relay lineup/split storage, heat-end data, and the one-time administrator setup claim. Migration `0009_ads_and_athlete_photos.sql` adds the Ads table, athlete consent/photo metadata, and private image buckets; apply it before deploying these features.
+Migration `0010_machcoll_daily_usage.sql` adds persistent per-device daily Machcoll usage records. The API falls back to its in-memory limiter until this migration is applied.
 
 ## Roles
 
-| Capability | Public | Recorder | Admin |
-|---|---:|---:|---:|
-| View scoreboard, events, and report | yes | yes | yes |
-| Start clocks and record results | no | yes | yes |
-| Manage athletes, events, house-based relay teams, and heats | no | no | yes |
-| Manage ads and athlete photo consent | no | no | yes |
-| Manage staff accounts, scoring, settings, backups, and resets | no | no | yes |
+| Capability                                                    | Public | Recorder | Admin |
+| ------------------------------------------------------------- | -----: | -------: | ----: |
+| View scoreboard, events, and report                           |    yes |      yes |   yes |
+| Start clocks and record results                               |     no |      yes |   yes |
+| Manage athletes, events, house-based relay teams, and heats   |     no |       no |   yes |
+| Manage ads and athlete photo consent                          |     no |       no |   yes |
+| Manage staff accounts, scoring, settings, backups, and resets |     no |       no |   yes |
 
 Roles are checked in the API, not only hidden in the interface.
 
@@ -42,13 +44,14 @@ Do not expose the setup key through a `VITE_` variable. Remove it from deploymen
 - Server routes use the Supabase service-role client. It must remain server-only and must never be included in browser bundles.
 - Write routes require the app’s custom request header and reject cross-site requests.
 - API inputs have size and field limits; roster uploads are capped at 8 MB.
+- The public Machcoll endpoint applies a best-effort in-memory limit of one question per browser/device per UTC calendar day, with IP fallback for devices that omit a valid device ID. The browser stores a persistent device ID and the UI disables further questions locally after use. Keep `LOVABLE_API_KEY` server-side; Lovable manages the project AI connector and key.
 - Relay results are recorded against house-team entries; current recording does not require runner lineups or relay splits.
 - Roster clearing and full resets create a backup record first. User actions are written to the audit table.
 - Login activity displays a browser-derived device label instead of the IP; old entries without device metadata show that the device was not recorded. Failed-login IPs remain in audit details for rate limiting but are hidden in the activity display.
 
 ## API overview
 
-- **Public:** `GET /api/state`, `/api/results.csv`, `/api/time`.
+- **Public:** `GET /api/state`, `/api/results.csv`, `/api/time`; `GET /api/chat/status` and `POST /api/chat` for one-question-per-device Machcoll answers.
 - **Marketplace:** `GET /api/ads` returns active ads only.
 - **Sign-in and first setup:** `GET /api/me`, `POST /api/login`, `/api/logout`, `/api/me/password`, `GET /api/bootstrap/status`, `POST /api/bootstrap`.
 - **Recording:** `GET /api/staff/state`; event start/reset/complete/reopen; entry time/relay split/undo/mark/clear/status; heat assignment.
